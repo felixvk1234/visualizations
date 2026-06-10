@@ -27,7 +27,8 @@ const NET_ACTS = {
 };
 const ACT_NAMES = {
   sigmoid: 'sigmoid', tanh: 'tanh', relu: 'ReLU', leakyrelu: 'LeakyReLU',
-  elu: 'ELU', gelu: 'GELU', swish: 'Swish', softplus: 'Softplus', linear: 'linear',
+  elu: 'ELU', gelu: 'GELU', swish: 'Swish', softplus: 'Softplus',
+  softmax: 'softmax', linear: 'linear',
 };
 let activationFn = NET_ACTS.sigmoid;
 
@@ -271,15 +272,26 @@ function drawLabels() {
 
 /* ---------- forward pass: compute every neuron value ---------- */
 function computeForward(animate) {
+  const isSoftmax = netActSelect && netActSelect.value === 'softmax';
   for (let l = 1; l < layers.length; l++) {
     const isOutput = l === layers.length - 1;
+    // first compute every neuron's weighted sum ξ (stored for the panel)
     layers[l].forEach(node => {
       let xi = node.bias;
       layers[l - 1].forEach((prev, j) => { xi += node.weights[j] * prev.value; });
-      // activation σ is applied only on the final (output) layer;
-      // hidden layers pass the raw weighted sum ξ through.
-      node.value = isOutput ? activationFn(xi) : xi;
+      node.xi = xi;
     });
+    // activation is applied only on the final (output) layer;
+    // hidden layers pass the raw weighted sum ξ through.
+    if (isOutput && isSoftmax) {
+      // softmax normalizes across ALL output neurons (numerically stable)
+      const maxXi = Math.max(...layers[l].map(n => n.xi));
+      const exps = layers[l].map(n => Math.exp(n.xi - maxXi));
+      const sum = exps.reduce((s, e) => s + e, 0);
+      layers[l].forEach((node, i) => { node.value = exps[i] / sum; });
+    } else {
+      layers[l].forEach(node => { node.value = isOutput ? activationFn(node.xi) : node.xi; });
+    }
   }
   if (!animate) {
     layers.forEach(nodes => nodes.forEach(n => { n.valEl.textContent = n.value.toFixed(2); }));
@@ -359,7 +371,16 @@ function onNodeClick(l, i) {
 
   calcTitle.textContent = `${layerName} · neuron ${i + 1}`;
   calcSum.innerHTML = `<span class="ck">Weighted sum</span> &nbsp; ξ = ${parts.join(' + ')} ${biasStr} <span class="bias-tag">(bias b<sub>${l}</sub>)</span> = <b>${xi.toFixed(2)}</b>`;
-  if (isOutput) {
+  if (isOutput && netActSelect.value === 'softmax') {
+    // softmax normalizes across all output neurons: x_i = e^{ξ_i} / Σ_k e^{ξ_k}
+    const out = layers[l];
+    const expTerms = out.map(n => `e^${n.xi.toFixed(2)}`);
+    const denomVal = out.reduce((s, n) => s + Math.exp(n.xi), 0);
+    calcAct.innerHTML =
+      `<span class="ck">Softmax</span> &nbsp; x = e<sup>ξ</sup> ⁄ Σ<sub>k</sub> e<sup>ξ<sub>k</sub></sup> ` +
+      `= e<sup>${xi.toFixed(2)}</sup> ⁄ (${expTerms.join(' + ')}) ` +
+      `= ${Math.exp(xi).toFixed(2)} ⁄ ${denomVal.toFixed(2)} = <b>${node.value.toFixed(2)}</b>`;
+  } else if (isOutput) {
     const key = netActSelect.value;
     // σ conventionally means sigmoid; use the actual function name otherwise
     const fn = key === 'sigmoid' ? 'σ' : (ACT_NAMES[key] || key);
@@ -468,8 +489,9 @@ outputsSlider.addEventListener('input', () => {
 
 const netActSelect = document.getElementById('netAct');
 netActSelect.addEventListener('change', () => {
-  activationFn = NET_ACTS[netActSelect.value];
-  computeForward(false);             // recompute output-layer values with new σ
+  // softmax is handled specially in computeForward; fall back to identity here
+  activationFn = NET_ACTS[netActSelect.value] || NET_ACTS.linear;
+  computeForward(false);             // recompute output-layer values with new activation
   if (pinned) { const p = pinned; clearPinned(); onNodeClick(p.l, p.i); } // refresh panel
 });
 
