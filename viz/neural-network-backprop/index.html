@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Feedforward Neural Networks — Interactive Explainer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <!-- MathJax for rendering the equations -->
+  <script>
+    window.MathJax = { tex: { inlineMath: [['\\(', '\\)']], displayMath: [['$$', '$$']] }, svg: { fontCache: 'global' } };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <a class="back" href="../../index.html">← All visualizations</a>
+
+  <main>
+    <header class="hero">
+      <span class="eyebrow">Artificial Neural Networks</span>
+      <h1>Multilayer Feedforward Neural Networks</h1>
+    </header>
+
+    <!-- ============ THE NETWORK ============ -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>The network</h2>
+        <p>A fully connected (dense) network of <span class="hl">L</span> layers. Every neuron in layer
+          <span class="hl">l</span> connects to every neuron in layer <span class="hl">l+1</span>.
+          The number inside each neuron is its value; the green <b>b</b> units are bias neurons (one per layer).
+          <b>Click any neuron</b> to reveal the weights <span class="hl">w</span> and bias <span class="hl">b</span>
+          on its incoming connections — the full calculation appears in the panel just below the diagram.</p>
+      </div>
+
+      <div class="stage">
+        <svg id="net" viewBox="0 0 900 460" preserveAspectRatio="xMidYMid meet" aria-label="Neural network diagram"></svg>
+      </div>
+
+      <div class="wscale">
+        <span>When you click a neuron, its incoming weights are coloured:</span>
+        <span class="wscale-neg">−1</span>
+        <span class="wscale-bar"></span>
+        <span class="wscale-pos">+1</span>
+        <span class="wscale-hint">(thicker = larger magnitude)</span>
+      </div>
+
+      <!-- calculation modal, shown just underneath the diagram on click -->
+      <div id="calcPanel" class="calc-panel">
+        <div class="calc-empty">Click any neuron in the diagram to see how its value is calculated.</div>
+        <div class="calc-content" hidden>
+          <div class="calc-title" id="calcTitle"></div>
+          <div class="calc-row" id="calcSum"></div>
+          <div class="calc-row" id="calcAct"></div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="ctrl">
+          <label for="layers">Layers (L)</label>
+          <input id="layers" type="range" min="2" max="5" step="1" value="4" />
+          <output id="layersOut">4</output>
+        </div>
+        <div class="ctrl">
+          <label for="inputs">Input neurons</label>
+          <input id="inputs" type="range" min="1" max="6" step="1" value="3" />
+          <output id="inputsOut">3</output>
+        </div>
+        <div class="ctrl">
+          <label for="neurons">Neurons / hidden layer</label>
+          <input id="neurons" type="range" min="2" max="6" step="1" value="4" />
+          <output id="neuronsOut">4</output>
+        </div>
+        <div class="ctrl">
+          <label for="outputs">Output neurons</label>
+          <input id="outputs" type="range" min="1" max="6" step="1" value="2" />
+          <output id="outputsOut">2</output>
+        </div>
+        <div class="ctrl">
+          <label for="netAct">Output activation</label>
+          <select id="netAct">
+            <option value="sigmoid">Sigmoid</option>
+            <option value="tanh">tanh</option>
+            <option value="relu">ReLU</option>
+            <option value="leakyrelu">Leaky ReLU</option>
+            <option value="elu">ELU</option>
+            <option value="gelu">GELU</option>
+            <option value="swish">Swish (SiLU)</option>
+            <option value="softplus">Softplus</option>
+            <option value="linear">Linear (identity)</option>
+          </select>
+        </div>
+        <button id="randomize" class="btn btn-ghost">🎲 Randomize weights</button>
+        <button id="play" class="btn">▶ Propagate signal</button>
+      </div>
+
+      <div id="paramCount" class="param-count"></div>
+    </section>
+
+    <!-- ============ THE MATH ============ -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>What each neuron computes</h2>
+      </div>
+
+      <div class="math-cards">
+        <div class="math-card" data-term="xi">
+          <div class="math-label">Activation of neuron <em>i</em> in layer <em>l+1</em></div>
+          $$ x_{i,p}^{\,l+1} = \sigma\!\left(\xi_{i,p}^{\,l+1}\right) $$
+          <p class="math-note">The neuron's output: run its weighted input <span class="hl">ξ</span> through the
+            activation function <span class="hl">σ</span>.</p>
+        </div>
+        <div class="math-card" data-term="xi-sum">
+          <div class="math-label">Weighted input ("pre-activation")</div>
+          $$ \xi_{i,p}^{\,l+1} = \sum_{j=1}^{N_l} w_{ij}^{\,l+1}\, x_{j,p}^{\,l} + b_i^{\,l+1} $$
+          <p class="math-note">Sum over every neuron <span class="hl">j</span> in the previous layer of
+            (its output × the connecting weight), plus the neuron's own bias <span class="hl">b</span>.</p>
+        </div>
+      </div>
+      <p class="math-note" style="margin-top:-4px">
+        <b>Note:</b> in this interactive diagram the activation <span class="hl">σ</span> is applied at the
+        <span class="hl">output layer</span>; the hidden layers display their raw weighted sum <span class="hl">ξ</span>
+        so you can follow the arithmetic. Every non-input neuron also carries a <span class="hl">bias</span> term,
+        which is why the trainable-parameter count above includes both weights and biases.
+      </p>
+
+      <div class="legend">
+        <h3>Symbol legend</h3>
+        <ul>
+          <li><b>\(L\)</b> — total number of layers (so \(L-1\) hidden layers).</li>
+          <li><b>\(N_l\)</b> — number of neurons in layer \(l\).</li>
+          <li><b>\(P\)</b> — number of input patterns; <b>\(p\)</b> indexes a single pattern.</li>
+          <li><b>\(x_{j,p}^{\,l}\)</b> — output (activation) of neuron \(j\) in layer \(l\) for pattern \(p\).</li>
+          <li><b>\(w_{ij}^{\,l+1}\)</b> — weight from neuron \(j\) (layer \(l\)) to neuron \(i\) (layer \(l+1\)).</li>
+          <li><b>\(b_i^{\,l+1}\)</b> — bias added to neuron \(i\) in layer \(l+1\).</li>
+          <li><b>\(\xi_{i,p}^{\,l+1}\)</b> — weighted sum reaching neuron \(i\) before activation.</li>
+          <li><b>\(\sigma(\cdot)\)</b> — the activation function (e.g. sigmoid).</li>
+        </ul>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <a href="https://github.com/felixvk1234/visualizations">Source on GitHub</a>
+    </footer>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>

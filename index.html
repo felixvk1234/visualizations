@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Visualizations — Portfolio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0b0e14;
+      --bg-soft: #131826;
+      --card: #161c2c;
+      --border: #232b40;
+      --text: #e6e9f0;
+      --muted: #8b93a7;
+      --accept: #5b8cff;
+      --accent2: #7c5cff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: radial-gradient(1200px 600px at 80% -10%, #1a2236 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 80px 24px 120px; }
+    header { margin-bottom: 56px; }
+    .eyebrow {
+      display: inline-block;
+      font-size: 13px; font-weight: 600; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--accent);
+      background: rgba(91,140,255,0.1);
+      padding: 6px 12px; border-radius: 999px; margin-bottom: 20px;
+    }
+    h1 { font-size: clamp(34px, 6vw, 56px); font-weight: 800; line-height: 1.05; letter-spacing: -0.02em; }
+    .sub { color: var(--muted); font-size: 18px; margin-top: 16px; max-width: 560px; line-height: 1.6; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+    .card {
+      display: block; text-decoration: none; color: inherit;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 16px; padding: 24px; transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+      position: relative; overflow: hidden;
+    }
+    .card:hover { transform: translateY(-4px); border-color: var(--accent); box-shadow: 0 12px 40px -12px rgba(91,140,255,0.35); }
+    .card .tag { font-size: 12px; font-weight: 600; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.08em; }
+    .card h3 { font-size: 21px; font-weight: 700; margin: 12px 0 8px; }
+    .card p { color: var(--muted); font-size: 15px; line-height: 1.55; }
+    .card .arrow { margin-top: 18px; color: var(--accent); font-weight: 600; font-size: 14px; }
+    .thumb {
+      height: 120px; border-radius: 12px; margin-bottom: 18px;
+      background: linear-gradient(135deg, #1d2740, #2a1f4d);
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border);
+    }
+    footer { margin-top: 80px; color: var(--muted); font-size: 14px; }
+    a.gh { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <span class="eyebrow">Portfolio</span>
+      <h1>Interactive Visualizations</h1>
+      <p class="sub">A growing collection of interactive explainers built with HTML, CSS &amp; JavaScript — turning dense concepts into things you can click, drag and understand.</p>
+    </header>
+
+    <div class="grid">
+      <a class="card" href="viz/neural-network-backprop/index.html">
+        <div class="thumb">
+          <svg width="120" height="80" viewBox="0 0 120 80" fill="none">
+            <g stroke="#5b8cff" stroke-width="1" opacity="0.5">
+              <line x1="20" y1="20" x2="60" y2="15"/><line x1="20" y1="20" x2="60" y2="40"/><line x1="20" y1="20" x2="60" y2="65"/>
+              <line x1="20" y1="40" x2="60" y2="15"/><line x1="20" y1="40" x2="60" y2="40"/><line x1="20" y1="40" x2="60" y2="65"/>
+              <line x1="20" y1="60" x2="60" y2="15"/><line x1="20" y1="60" x2="60" y2="40"/><line x1="20" y1="60" x2="60" y2="65"/>
+              <line x1="60" y1="15" x2="100" y2="40"/><line x1="60" y1="40" x2="100" y2="40"/><line x1="60" y1="65" x2="100" y2="40"/>
+            </g>
+            <g fill="#7c5cff">
+              <circle cx="20" cy="20" r="6"/><circle cx="20" cy="40" r="6"/><circle cx="20" cy="60" r="6"/>
+              <circle cx="60" cy="15" r="6"/><circle cx="60" cy="40" r="6"/><circle cx="60" cy="65" r="6"/>
+              <circle cx="100" cy="40" r="6"/>
+            </g>
+          </svg>
+        </div>
+        <span class="tag">Machine Learning</span>
+        <h3>Backpropagation &amp; Feedforward Nets</h3>
+        <p>An interactive walk-through of multilayer feedforward neural networks — forward propagation, weights, activations, and the math behind each layer.</p>
+        <div class="arrow">Explore →</div>
+      </a>
+    </div>
+
+    <footer>
+      <a class="gh" href="https://github.com/felixvk1234/visualizations">Source on GitHub</a>
+    </footer>
+  </div>
+</body>
+</html>
