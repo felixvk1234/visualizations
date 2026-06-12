@@ -81,7 +81,7 @@
     <section class="panel">
       <p class="section-kicker">Step 1 — Patchify</p>
       <h2>An image becomes a sequence of “visual words”</h2>
-      <p class="lead">Transformers were built for text, where the input is naturally a sequence. An image is just a grid of pixels — so ViT imposes a sequence on it by slicing the image into fixed-size square patches, read left-to-right, top-to-bottom, like words on a page. <b>Drag the slider</b> to change the patch size, and toggle <b>Explode</b> to see the patches as separate tokens.</p>
+      <p class="lead">Transformers were built for text, where the input is naturally a sequence. An image is just a grid of pixels — so ViT imposes a sequence on it by slicing the image into fixed-size square patches, read left-to-right, top-to-bottom, like words on a page. <b>Drag the slider</b> to change the patch size, and toggle <b>Explode</b> to see the patches as separate tokens. <b>Your choice here carries through every later step of this page</b> — patch size is the one design decision that fixes the sequence length the rest of the model has to work with.</p>
 
       <div class="patch-lab">
         <div class="patch-stage-wrap">
@@ -105,6 +105,7 @@
     <section class="panel">
       <p class="section-kicker">Step 2 — Embedding</p>
       <h2>Each patch is flattened into a vector</h2>
+      <p class="grid-badge">Carrying over your Step 1 choice: <b id="embedBadge">4 × 4 grid → 16 patch tokens</b> (+1 <span class="cls-chip">CLS</span>)</p>
       <p class="lead">A transformer can't eat image tiles directly — every token must be a vector of numbers. Each patch (16 × 16 pixels × 3 colour channels = 768 raw values) is flattened and multiplied by a learned matrix \(\mathbf{E}\), projecting it to the model dimension \(D\). Two extras are then added:</p>
 
       <ul class="feature-list">
@@ -117,13 +118,14 @@
       </div>
 
       <div class="embed-strip" id="embedStrip"></div>
-      <p class="caption">The input sequence for our puppy photo (4 × 4 grid for readability). Each card is one token: the patch it came from, its position index, and its embedding vector — drawn here as a colour-coded bar strip computed from the real pixel values of each patch.</p>
+      <p class="caption">The input sequence for our puppy photo, using <span id="embedCapN">your 4 × 4 grid from Step 1</span>. Each card is one token: the patch it came from, its position index, and its embedding vector — drawn here as a colour-coded bar strip computed from the real pixel values of each patch. Change the slider in Step 1 and this sequence changes with it.</p>
     </section>
 
     <!-- ===================== STEP 3: SELF-ATTENTION ===================== -->
     <section class="panel">
       <p class="section-kicker">Step 3 — Self-attention</p>
       <h2>Every patch looks at every other patch</h2>
+      <p class="grid-badge">Still your Step 1 choice: <b id="attnBadge">4 × 4 grid — every patch can attend to all 16</b></p>
       <p class="lead">This is the heart of the transformer. For each token, attention computes a <b>query</b>, compares it against the <b>keys</b> of all other tokens, and turns the match scores into weights with a softmax:</p>
 
       <div class="formula">

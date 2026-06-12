@@ -1,842 +1,538 @@
-// ============ UTILITIES ============
-const sigmoid = x => 1 / (1 + Math.exp(-Math.max(-500, Math.min(500, x))));
-const sigmoid_prime = x => {
-  const s = sigmoid(x);
-  return s * (1 - s);
-};
-const relu = x => Math.max(0, x);
-const relu_prime = x => (x > 0 ? 1 : 0);
-const tanh_fn = x => Math.tanh(x);
-const tanh_prime = x => 1 - Math.tanh(x) ** 2;
+/* ============================================================
+   Backpropagation, Explained Simply — interactions
+   1. Loss valley with draggable ball (gradient = slope)
+   2. Step-through of one real backprop pass on a 2-2-1 net
+   3. Live training of a 1-6-1 net fitting a curve
+   ============================================================ */
 
-const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-const rand = () => (Math.random() - 0.5) * 0.5;
+const SVGNS = 'http://www.w3.org/2000/svg';
+function el(name, attrs = {}, text) {
+  const e = document.createElementNS(SVGNS, name);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  return e;
+}
+const fmt = (v, d = 2) => (v >= 0 ? '+' : '') + v.toFixed(d);
 
-// ============ SIMPLE NEURAL NETWORK (STATIC) ============
-class SimpleNetwork {
-  constructor(layerSizes = [1, 3, 3, 1]) {
-    this.layers = layerSizes.length;
-    this.layerSizes = layerSizes;
-    this.weights = [];
-    this.biases = [];
-    this.activations = [];
-    this.preActivations = [];
-    this.initWeights();
-    this.lossHistory = [];
-  }
+/* ===================== 1. THE LOSS VALLEY ===================== */
+(() => {
+  const svg = document.getElementById('hillSvg');
+  const W0 = 1.1;                       // valley bottom
+  const L = w => 0.1 + 0.5 * (w - W0) ** 2;
+  const slope = w => (w - W0);
+  const WMIN = -2.2, WMAX = 4.4, LMAX = 4.0;
 
-  initWeights() {
-    this.weights = [];
-    this.biases = [];
-    this.activations = [];
-    this.preActivations = [];
-    this.deltas = [];
-    this.gradients = [];
-    for (let i = 0; i < this.layers - 1; i++) {
-      const w = Array(this.layerSizes[i + 1])
-        .fill(0)
-        .map(() => Array(this.layerSizes[i]).fill(0).map(rand));
-      const b = Array(this.layerSizes[i + 1]).fill(0).map(rand);
-      this.weights.push(w);
-      this.biases.push(b);
+  // svg coords
+  const PX = w => 30 + (w - WMIN) / (WMAX - WMIN) * 410;
+  const PY = l => 270 - Math.min(l, LMAX) / LMAX * 245;
+  const fromPX = px => WMIN + (px - 30) / 410 * (WMAX - WMIN);
+
+  let w = 3.4;
+  let lr = 0.8;
+  let trail = [];
+  let auto = null;
+
+  const roW = document.getElementById('roW');
+  const roL = document.getElementById('roL');
+  const roG = document.getElementById('roG');
+  const roDir = document.getElementById('roDir');
+  const cap = document.getElementById('hillCaption');
+  const autoBtn = document.getElementById('hillAuto');
+
+  function draw() {
+    svg.innerHTML = '';
+    // curve
+    let d = '';
+    for (let px = 30; px <= 440; px += 4) {
+      const y = PY(L(fromPX(px)));
+      d += (d ? ' L ' : 'M ') + px + ' ' + y;
     }
-  }
-
-  forward(x) {
-    this.activations = [x.slice()];
-    this.preActivations = [];
-
-    for (let l = 0; l < this.layers - 1; l++) {
-      const z = this.weights[l].map((row, i) => {
-        const sum = row.reduce((acc, w, j) => acc + w * x[j], 0) + this.biases[l][i];
-        return sum;
-      });
-      this.preActivations.push(z);
-
-      // Apply activation: ReLU for hidden, sigmoid for output
-      if (l < this.layers - 2) {
-        x = z.map(relu);
-      } else {
-        x = z.map(sigmoid);
-      }
-      this.activations.push(x);
-    }
-
-    return x;
-  }
-
-  backward(target, learningRate = 0.1) {
-    const deltas = Array(this.layers - 1);
-    const L = this.layers - 1;
-
-    // Output layer delta
-    deltas[L - 1] = this.activations[L].map((a, i) => {
-      const dLda = a - target[i];
-      const dadz = sigmoid_prime(this.preActivations[L - 1][i]);
-      return dLda * dadz;
+    svg.appendChild(el('path', { d, fill: 'none', stroke: '#6090ff', 'stroke-width': 2.5 }));
+    // axes labels
+    svg.appendChild(el('text', { x: 235, y: 293, 'text-anchor': 'middle', fill: '#9aa4b8', 'font-size': 11, 'font-family': 'Inter, sans-serif', 'font-weight': 600 }, 'weight w →'));
+    svg.appendChild(el('text', { x: 14, y: 150, fill: '#9aa4b8', 'font-size': 11, 'font-family': 'Inter, sans-serif', 'font-weight': 600, transform: 'rotate(-90 14 150)', 'text-anchor': 'middle' }, 'loss L'));
+    // valley marker
+    svg.appendChild(el('text', { x: PX(W0), y: PY(0.1) + 18, 'text-anchor': 'middle', fill: '#55d68b', 'font-size': 10.5, 'font-family': 'Inter, sans-serif', 'font-weight': 700 }, '★ goal'));
+    // trail ghosts
+    trail.forEach((tw, i) => {
+      svg.appendChild(el('circle', {
+        cx: PX(tw), cy: PY(L(tw)), r: 5,
+        fill: '#ffd166', opacity: 0.12 + 0.3 * (i / trail.length),
+      }));
     });
-
-    // Backprop through hidden layers
-    for (let l = L - 2; l >= 0; l--) {
-      const delta = Array(this.layerSizes[l + 1]).fill(0);
-      const nextDelta = deltas[l + 1];
-
-      for (let i = 0; i < this.layerSizes[l + 1]; i++) {
-        let sum = 0;
-        for (let j = 0; j < this.layerSizes[l + 2]; j++) {
-          sum += this.weights[l + 1][j][i] * nextDelta[j];
-        }
-        delta[i] = sum * relu_prime(this.preActivations[l][i]);
-      }
-      deltas[l] = delta;
+    // tangent line at ball (slope converted from data units to pixels; SVG y points down)
+    const g = slope(w), bx = PX(w), by = PY(L(w));
+    const scaleX = 410 / (WMAX - WMIN), scaleY = 245 / LMAX;
+    const dxPix = 46, dyPix = -g * scaleY / scaleX * dxPix;
+    svg.appendChild(el('line', {
+      x1: bx - dxPix, y1: by - dyPix, x2: bx + dxPix, y2: by + dyPix,
+      stroke: '#ffd166', 'stroke-width': 2, 'stroke-dasharray': '5 4', opacity: 0.85,
+    }));
+    // downhill arrow
+    const dir = g > 0 ? -1 : 1;
+    if (Math.abs(g) > 0.04) {
+      svg.appendChild(el('path', {
+        d: `M ${bx + dir * 18} ${by - 24} l ${dir * 22} 0 l ${-dir * 7} -6 m ${dir * 7} 6 l ${-dir * 7} 6`,
+        stroke: '#55d68b', 'stroke-width': 2.5, fill: 'none', 'stroke-linecap': 'round',
+      }));
     }
+    // ball
+    svg.appendChild(el('circle', { cx: bx, cy: by, r: 10, fill: '#ffd166', stroke: '#0b0e14', 'stroke-width': 2, style: 'cursor:grab' }));
 
-    this.deltas = deltas.map(delta => delta.slice());
-    this.gradients = this.weights.map((layer, l) =>
-      layer.map((row, i) =>
-        row.map((_, j) => deltas[l][i] * this.activations[l][j])
-      )
-    );
-
-    // Update weights
-    for (let l = 0; l < L; l++) {
-      for (let i = 0; i < this.weights[l].length; i++) {
-        for (let j = 0; j < this.weights[l][i].length; j++) {
-          const grad = deltas[l][i] * this.activations[l][j];
-          this.weights[l][i][j] -= learningRate * grad;
-        }
-        this.biases[l][i] -= learningRate * deltas[l][i];
-      }
-    }
+    roW.textContent = w.toFixed(2);
+    roL.textContent = L(w).toFixed(2);
+    roG.textContent = fmt(g, 2);
+    roDir.textContent = Math.abs(g) < 0.04 ? '— stay (slope ≈ 0)' : g > 0 ? '← left (downhill)' : '→ right (downhill)';
   }
 
-  loss(output, target) {
-    let l = 0;
-    for (let i = 0; i < output.length; i++) {
-      l += 0.5 * (output[i] - target[i]) ** 2;
+  function setCaption(html) { cap.innerHTML = html; }
+
+  function step() {
+    const g = slope(w);
+    trail.push(w);
+    if (trail.length > 12) trail.shift();
+    let next = w - lr * g;
+    let diverged = false;
+    if (next < WMIN || next > WMAX) { next = Math.max(WMIN, Math.min(WMAX, next)); diverged = true; }
+    // animate
+    const from = w, to = next, t0 = performance.now();
+    function anim(t) {
+      const u = Math.min(1, (t - t0) / 350);
+      w = from + (to - from) * (1 - Math.pow(1 - u, 3));
+      draw();
+      if (u < 1) requestAnimationFrame(anim);
+      else {
+        if (diverged) setCaption('<b style="color:#ff6b72">Diverged!</b> The step was so large it jumped clean over the valley and ended up higher. Pick a smaller η and try again.');
+        else if (Math.abs(slope(w)) < 0.05) setCaption('<b style="color:#55d68b">Bottom reached.</b> The slope is ≈ 0, so the update stops moving — the weight has converged.');
+        else if (lr >= 2) setCaption('Overshot the bottom — with η = 2.1 every step lands <b>higher on the other side</b>. Watch the loss grow.');
+        else setCaption(`Moved against the slope: w went ${to < from ? 'left' : 'right'}, loss went <b>down</b>.`);
+      }
     }
-    return l;
-  }
-}
-
-// ============ SIMPLE RNN (DYNAMIC) ============
-class SimpleRNN {
-  constructor(inputSize = 1, hiddenSize = 3, outputSize = 1) {
-    this.inputSize = inputSize;
-    this.hiddenSize = hiddenSize;
-    this.outputSize = outputSize;
-
-    // Weight matrices
-    this.Wxh = Array(hiddenSize).fill(0).map(() => Array(inputSize).fill(0).map(rand)); // input -> hidden
-    this.Whh = Array(hiddenSize).fill(0).map(() => Array(hiddenSize).fill(0).map(rand)); // hidden -> hidden
-    this.Why = Array(outputSize).fill(0).map(() => Array(hiddenSize).fill(0).map(rand)); // hidden -> output
-
-    this.bh = Array(hiddenSize).fill(0);
-    this.by = Array(outputSize).fill(0);
-
-    this.lossHistory = [];
-    this.inputs = [];
-    this.gradientMagnitudes = [];
+    requestAnimationFrame(anim);
   }
 
-  forward(inputs) {
-    const T = inputs.length;
-    const h = [Array(this.hiddenSize).fill(0)]; // h_0 = zero
-    const y = [];
-
-    for (let t = 0; t < T; t++) {
-      const ht = Array(this.hiddenSize).fill(0);
-      for (let i = 0; i < this.hiddenSize; i++) {
-        let sum = this.bh[i];
-        for (let j = 0; j < this.inputSize; j++) {
-          sum += this.Wxh[i][j] * inputs[t][j];
-        }
-        for (let j = 0; j < this.hiddenSize; j++) {
-          sum += this.Whh[i][j] * h[t][j];
-        }
-        ht[i] = Math.tanh(sum);
-      }
-      h.push(ht);
-
-      const yt = Array(this.outputSize).fill(0);
-      for (let i = 0; i < this.outputSize; i++) {
-        let sum = this.by[i];
-        for (let j = 0; j < this.hiddenSize; j++) {
-          sum += this.Why[i][j] * ht[j];
-        }
-        yt[i] = sigmoid(sum);
-      }
-      y.push(yt);
-    }
-
-    this.h = h;
-    this.y = y;
-    this.inputs = inputs.map(input => input.slice());
-    return { h, y };
+  function stopAuto() {
+    if (auto) { clearInterval(auto); auto = null; autoBtn.textContent = '▶ Walk down'; }
   }
 
-  loss(outputs, targets) {
-    let l = 0;
-    for (let t = 0; t < outputs.length; t++) {
-      for (let i = 0; i < outputs[t].length; i++) {
-        l += 0.5 * (outputs[t][i] - targets[t][i]) ** 2;
-      }
-    }
-    return l;
-  }
-
-  backward(targets, learningRate = 0.1) {
-    const T = targets.length;
-    this.gradientMagnitudes = Array(T).fill(0);
-    const dWxh = Array(this.hiddenSize).fill(0).map(() => Array(this.inputSize).fill(0));
-    const dWhh = Array(this.hiddenSize).fill(0).map(() => Array(this.hiddenSize).fill(0));
-    const dWhy = Array(this.outputSize).fill(0).map(() => Array(this.hiddenSize).fill(0));
-    const dbh = Array(this.hiddenSize).fill(0);
-    const dby = Array(this.outputSize).fill(0);
-
-    let dh_next = Array(this.hiddenSize).fill(0);
-    let gradNorm = 0;
-
-    for (let t = T - 1; t >= 0; t--) {
-      // Output pre-activation gradient: MSE derivative through sigmoid.
-      const dy = Array(this.outputSize).fill(0);
-      for (let i = 0; i < this.outputSize; i++) {
-        const y = this.y[t][i];
-        dy[i] = (y - targets[t][i]) * y * (1 - y);
-      }
-
-      // Why gradients
-      for (let i = 0; i < this.outputSize; i++) {
-        for (let j = 0; j < this.hiddenSize; j++) {
-          dWhy[i][j] += dy[i] * this.h[t + 1][j];
-        }
-        dby[i] += dy[i];
-      }
-
-      // Hidden state gradient
-      const dh = dh_next.slice();
-      for (let i = 0; i < this.hiddenSize; i++) {
-        for (let j = 0; j < this.outputSize; j++) {
-          dh[i] += dy[j] * this.Why[j][i];
-        }
-      }
-
-      // Through tanh.
-      const dhRaw = Array(this.hiddenSize).fill(0);
-      for (let i = 0; i < this.hiddenSize; i++) {
-        dhRaw[i] = dh[i] * (1 - this.h[t + 1][i] ** 2);
-        gradNorm += dhRaw[i] ** 2;
-      }
-      this.gradientMagnitudes[t] = Math.sqrt(dhRaw.reduce((sum, value) => sum + value ** 2, 0));
-
-      // Wxh, Whh gradients
-      for (let i = 0; i < this.hiddenSize; i++) {
-        for (let j = 0; j < this.inputSize; j++) {
-          dWxh[i][j] += dhRaw[i] * this.inputs[t][j];
-        }
-        dbh[i] += dhRaw[i];
-      }
-
-      for (let i = 0; i < this.hiddenSize; i++) {
-        for (let j = 0; j < this.hiddenSize; j++) {
-          dWhh[i][j] += dhRaw[i] * this.h[t][j];
-        }
-      }
-
-      dh_next = Array(this.hiddenSize).fill(0);
-      for (let i = 0; i < this.hiddenSize; i++) {
-        for (let j = 0; j < this.hiddenSize; j++) {
-          dh_next[i] += this.Whh[j][i] * dhRaw[j];
-        }
-      }
-    }
-
-    // Update parameters
-    const lr = learningRate;
-    for (let i = 0; i < this.hiddenSize; i++) {
-      for (let j = 0; j < this.inputSize; j++) {
-        this.Wxh[i][j] -= lr * dWxh[i][j];
-      }
-      for (let j = 0; j < this.hiddenSize; j++) {
-        this.Whh[i][j] -= lr * dWhh[i][j];
-      }
-      this.bh[i] -= lr * dbh[i];
-    }
-
-    for (let i = 0; i < this.outputSize; i++) {
-      for (let j = 0; j < this.hiddenSize; j++) {
-        this.Why[i][j] -= lr * dWhy[i][j];
-      }
-      this.by[i] -= lr * dby[i];
-    }
-
-    return Math.sqrt(gradNorm);
-  }
-}
-
-// ============ VISUALIZATIONS ============
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
-function appendSvg(svg, tag, attrs = {}, text = '') {
-  const element = document.createElementNS(SVG_NS, tag);
-  Object.entries(attrs).forEach(([name, value]) => element.setAttribute(name, value));
-  if (text) element.textContent = text;
-  svg.appendChild(element);
-  return element;
-}
-
-function layerY(index, count, height, margin) {
-  return count === 1
-    ? height / 2
-    : margin + (height - 2 * margin) * (index / (count - 1));
-}
-
-function drawStaticNetwork(svg, net, showGradients = false) {
-  svg.innerHTML = '';
-
-  const layers = net.layerSizes;
-  const layerCount = layers.length;
-  const height = 300;
-  const width = 400;
-  const margin = 42;
-  const layerWidth = (width - 2 * margin) / (layerCount - 1);
-  const allGradients = net.gradients.flat(2).map(Math.abs);
-  const maxGradient = Math.max(...allGradients, 0.0001);
-
-  for (let l = 0; l < layerCount - 1; l++) {
-    for (let i = 0; i < layers[l]; i++) {
-      for (let j = 0; j < layers[l + 1]; j++) {
-        const gradient = Math.abs(net.gradients[l]?.[j]?.[i] || 0);
-        const intensity = showGradients ? gradient / maxGradient : 0.35;
-        appendSvg(svg, 'line', {
-          x1: margin + l * layerWidth,
-          y1: layerY(i, layers[l], height, margin),
-          x2: margin + (l + 1) * layerWidth,
-          y2: layerY(j, layers[l + 1], height, margin),
-          stroke: showGradients ? '#ff6b6b' : '#5b8cff',
-          'stroke-width': showGradients ? 0.8 + intensity * 3 : 1,
-          opacity: showGradients ? 0.12 + intensity * 0.88 : 0.32,
-        });
-      }
-    }
-  }
-
-  for (let l = 0; l < layerCount; l++) {
-    for (let i = 0; i < layers[l]; i++) {
-      const x = margin + l * layerWidth;
-      const y = layerY(i, layers[l], height, margin);
-      const value = showGradients
-        ? (l === 0 ? 0 : net.deltas[l - 1]?.[i] || 0)
-        : net.activations[l]?.[i] || 0;
-      const intensity = clamp(Math.abs(value) * (showGradients ? 8 : 1), 0, 1);
-
-      appendSvg(svg, 'circle', {
-        cx: x,
-        cy: y,
-        r: 10,
-        fill: showGradients ? '#ff6b6b' : '#5b8cff',
-        stroke: showGradients ? '#ffc1c1' : '#b8caff',
-        'stroke-width': 1,
-        opacity: 0.25 + intensity * 0.75,
-      });
-      appendSvg(svg, 'text', {
-        x,
-        y: y + 22,
-        'text-anchor': 'middle',
-        'font-size': 9,
-        fill: '#8b93a7',
-      }, value.toFixed(2));
-    }
-
-    appendSvg(svg, 'text', {
-      x: margin + l * layerWidth,
-      y: 294,
-      'text-anchor': 'middle',
-      'font-size': 9,
-      fill: '#8b93a7',
-    }, l === 0 ? 'input' : l === layerCount - 1 ? 'output' : `hidden ${l}`);
-  }
-}
-
-function drawDynamicNetwork(svg, net, sequenceLength, showGradients = false) {
-  svg.innerHTML = '';
-
-  const width = 500;
-  const left = 42;
-  const right = 42;
-  const spacing = (width - left - right) / Math.max(1, sequenceLength - 1);
-  const inputY = 275;
-  const hiddenY = 170;
-  const outputY = 62;
-  const maxGradient = Math.max(...(net.gradientMagnitudes || []), 0.0001);
-
-  appendSvg(svg, 'text', {
-    x: 250,
-    y: 20,
-    'text-anchor': 'middle',
-    'font-size': 11,
-    fill: showGradients ? '#ff9c9c' : '#8b93a7',
-  }, showGradients ? 'gradients flow backward through shared recurrent weights' : 'the same weights are reused at every timestep');
-
-  for (let t = 0; t < sequenceLength; t++) {
-    const x = left + spacing * t;
-    const nextX = left + spacing * (t + 1);
-
-    appendSvg(svg, 'line', {
-      x1: x,
-      y1: inputY - 18,
-      x2: x,
-      y2: hiddenY + 25,
-      stroke: showGradients ? '#4a5268' : '#5b8cff',
-      'stroke-width': 1.5,
-      opacity: showGradients ? 0.35 : 0.7,
+  document.getElementById('hillStep').addEventListener('click', () => { stopAuto(); step(); });
+  autoBtn.addEventListener('click', () => {
+    if (auto) { stopAuto(); return; }
+    autoBtn.textContent = '⏸ Stop';
+    auto = setInterval(() => {
+      if (Math.abs(slope(w)) < 0.05 && lr < 2) { stopAuto(); return; }
+      step();
+    }, 480);
+  });
+  document.querySelectorAll('.lr-chips .chip').forEach(c => {
+    c.addEventListener('click', () => {
+      document.querySelectorAll('.lr-chips .chip').forEach(x => x.classList.remove('active'));
+      c.classList.add('active');
+      lr = parseFloat(c.dataset.lr);
+      setCaption(lr >= 2
+        ? 'Reckless mode armed. Take a few steps and watch it <b>overshoot</b>.'
+        : lr <= 0.2
+          ? 'Timid mode: safe, but it will take <b>many</b> steps to reach the bottom.'
+          : 'A good step size: fast progress, no overshooting.');
     });
-    appendSvg(svg, 'line', {
-      x1: x,
-      y1: hiddenY - 25,
-      x2: x,
-      y2: outputY + 18,
-      stroke: showGradients ? '#4a5268' : '#5b8cff',
-      'stroke-width': 1.5,
-      opacity: showGradients ? 0.35 : 0.7,
-    });
+  });
 
-    if (t < sequenceLength - 1) {
-      const magnitude = net.gradientMagnitudes?.[t + 1] || 0;
-      const intensity = magnitude / maxGradient;
-      appendSvg(svg, 'line', {
-        x1: showGradients ? nextX - 26 : x + 26,
-        y1: hiddenY,
-        x2: showGradients ? x + 26 : nextX - 26,
-        y2: hiddenY,
-        stroke: showGradients ? '#ff6b6b' : '#7c5cff',
-        'stroke-width': showGradients ? 1 + intensity * 4 : 2,
-        opacity: showGradients ? 0.2 + intensity * 0.8 : 0.8,
-        'stroke-dasharray': showGradients ? '5 3' : 'none',
-      });
-    }
-
-    const input = net.inputs[t]?.[0] ?? 0;
-    const output = net.y[t]?.[0] ?? 0;
-    const hidden = net.h[t + 1]
-      ? net.h[t + 1].reduce((sum, value) => sum + value, 0) / net.hiddenSize
-      : 0;
-    const gradientIntensity = clamp((net.gradientMagnitudes?.[t] || 0) / maxGradient, 0, 1);
-
-    appendSvg(svg, 'circle', {
-      cx: x, cy: inputY, r: 18, fill: '#26345a', stroke: '#5b8cff', 'stroke-width': 1.5,
-    });
-    appendSvg(svg, 'circle', {
-      cx: x, cy: hiddenY, r: 26,
-      fill: showGradients ? '#5a2630' : '#30275a',
-      stroke: showGradients ? '#ff6b6b' : '#7c5cff',
-      'stroke-width': showGradients ? 1.5 + gradientIntensity * 2 : 2,
-      opacity: showGradients ? 0.45 + gradientIntensity * 0.55 : 1,
-    });
-    appendSvg(svg, 'circle', {
-      cx: x, cy: outputY, r: 18, fill: '#26345a', stroke: '#5b8cff', 'stroke-width': 1.5,
-    });
-
-    [
-      [inputY + 4, `x=${input.toFixed(2)}`, 9],
-      [hiddenY - 2, `h${t + 1}`, 11],
-      [hiddenY + 11, `${net.hiddenSize} units`, 8],
-      [outputY + 4, `y=${output.toFixed(2)}`, 9],
-      [325, `t=${t + 1}`, 10],
-    ].forEach(([y, text, size]) => appendSvg(svg, 'text', {
-      x, y, 'text-anchor': 'middle', 'font-size': size, fill: '#e6e9f0',
-    }, text));
-
-    appendSvg(svg, 'text', {
-      x,
-      y: hiddenY + 40,
-      'text-anchor': 'middle',
-      'font-size': 8,
-      fill: '#8b93a7',
-    }, showGradients ? `|grad|=${(net.gradientMagnitudes?.[t] || 0).toFixed(3)}` : `mean=${hidden.toFixed(2)}`);
+  // dragging
+  function pointerW(ev) {
+    const r = svg.getBoundingClientRect();
+    const px = (ev.clientX - r.left) / r.width * 460;
+    return Math.max(WMIN, Math.min(WMAX, fromPX(px)));
   }
-}
+  let dragging = false;
+  svg.addEventListener('pointerdown', ev => { dragging = true; stopAuto(); trail = []; w = pointerW(ev); draw(); svg.setPointerCapture(ev.pointerId); });
+  svg.addEventListener('pointermove', ev => { if (dragging) { w = pointerW(ev); draw(); } });
+  svg.addEventListener('pointerup', () => { dragging = false; });
 
-// ============ INTERACTION ============
-const staticCanvas = document.getElementById('staticNet');
-const staticGradCanvas = document.getElementById('staticGradNet');
-const dynamicCanvas = document.getElementById('dynamicNet');
-const dynamicGradCanvas = document.getElementById('dynamicGradNet');
-const STATIC_INPUT = [1];
+  draw();
+})();
 
-let staticNet = new SimpleNetwork([1, 3, 1]);
-let staticLossHistory = [];
-let staticStepCount = 0;
-let dynamicNet = new SimpleRNN(1, 3, 1);
-let dynamicLossHistory = [];
-let dynamicStepCount = 0;
+/* ===================== 2. THE BACKWARD PASS, STEP BY STEP ===================== */
+(() => {
+  const svg = document.getElementById('bpSvg');
+  const dotsEl = document.getElementById('bpDots');
+  const titleEl = document.getElementById('bpTitle');
+  const explainEl = document.getElementById('bpExplain');
+  const prevBtn = document.getElementById('bpPrev');
+  const nextBtn = document.getElementById('bpNext');
 
-function staticLayerSizes() {
-  const layerCount = parseInt(document.getElementById('staticLayers').value);
-  const hiddenSize = parseInt(document.getElementById('staticNeurons').value);
-  return [1, ...Array(Math.max(0, layerCount - 2)).fill(hiddenSize), 1];
-}
+  /* --- the actual math, computed live --- */
+  const x = [1.0, 0.5];
+  const y = 1.0;
+  const LR = 0.5;
+  const W1 = [[0.6, -0.4], [0.3, 0.8]];   // W1[input][hidden]
+  const W2 = [0.5, -0.3];                  // hidden -> output
 
-function resetStaticMetrics() {
-  staticLossHistory = [];
-  staticStepCount = 0;
-  document.getElementById('staticLossValue').textContent = '—';
-  document.getElementById('staticPredValue').textContent = '—';
-  document.getElementById('staticStepCount').textContent = '0';
-  document.getElementById('staticBackpropDetail').innerHTML = '';
-  document.getElementById('staticCoachTitle').textContent = 'Ready to make a prediction';
-  document.getElementById('staticCoach').innerHTML =
-    'Click <b>Make a prediction</b>. The signal will travel from left to right through the blue network.';
-  updateStaticChart();
-}
-
-function updateStaticComparison(prediction = null) {
-  const target = parseFloat(document.getElementById('staticTarget').value);
-  document.getElementById('staticTargetText').textContent = target.toFixed(2);
-  document.getElementById('staticTargetBar').style.width = `${target * 100}%`;
-
-  if (prediction === null) {
-    document.getElementById('staticPredictionText').textContent = '—';
-    document.getElementById('staticPredictionBar').style.width = '0%';
-    document.getElementById('staticGapText').textContent = 'Make a prediction to see the mistake.';
-    return;
+  function forward(W1_, W2_) {
+    const hin = [0, 1].map(j => x[0] * W1_[0][j] + x[1] * W1_[1][j]);
+    const h = hin.map(Math.tanh);
+    const yhat = h[0] * W2_[0] + h[1] * W2_[1];
+    return { hin, h, yhat, loss: 0.5 * (yhat - y) ** 2 };
   }
+  const f = forward(W1, W2);
+  const e = f.yhat - y;                               // dL/dŷ
+  const gW2 = [e * f.h[0], e * f.h[1]];               // blame for output weights
+  const gh = [e * W2[0], e * W2[1]];                  // blame for hidden activations
+  const ghin = [gh[0] * (1 - f.h[0] ** 2), gh[1] * (1 - f.h[1] ** 2)];
+  const gW1 = [[x[0] * ghin[0], x[0] * ghin[1]], [x[1] * ghin[0], x[1] * ghin[1]]];
+  const W1n = W1.map((row, i) => row.map((w, j) => w - LR * gW1[i][j]));
+  const W2n = W2.map((w, j) => w - LR * gW2[j]);
+  const f2 = forward(W1n, W2n);
 
-  const gap = Math.abs(target - prediction);
-  document.getElementById('staticPredictionText').textContent = prediction.toFixed(3);
-  document.getElementById('staticPredictionBar').style.width = `${clamp(prediction, 0, 1) * 100}%`;
-  document.getElementById('staticGapText').textContent =
-    gap < 0.02 ? 'Very close. The network has nearly reached your goal.'
-      : `The prediction is ${gap.toFixed(3)} away from your goal.`;
-}
+  /* --- layout --- */
+  const IN = [{ x: 95, y: 75 }, { x: 95, y: 195 }];
+  const HID = [{ x: 340, y: 75 }, { x: 340, y: 195 }];
+  const OUT = { x: 585, y: 135 };
+  const R = 27;
+  // edges: list of {from, to, w, wNew, g, key}
+  const EDGES = [];
+  for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++)
+    EDGES.push({ from: IN[i], to: HID[j], w: W1[i][j], wNew: W1n[i][j], g: gW1[i][j] });
+  for (let j = 0; j < 2; j++)
+    EDGES.push({ from: HID[j], to: OUT, w: W2[j], wNew: W2n[j], g: gW2[j] });
 
-function rebuildStaticNetwork() {
-  staticNet = new SimpleNetwork(staticLayerSizes());
-  staticNet.forward(STATIC_INPUT);
-  resetStaticMetrics();
-  updateStaticComparison();
-  document.getElementById('staticForwardDetail').innerHTML = '';
-  drawStaticNetwork(staticCanvas, staticNet);
-  drawStaticNetwork(staticGradCanvas, staticNet, true);
-}
+  const STEPS = [
+    {
+      kicker: 'Step 0 of 4', title: 'The setup',
+      explain: `A tiny but real network: <b>2 inputs, 2 hidden neurons, 1 output — six weights</b>, shown as connections (<b style="color:#6090ff">blue</b> = positive, <b style="color:#ff6b72">red</b> = negative, thickness = size). The inputs are ${x[0].toFixed(1)} and ${x[1].toFixed(1)}, and we want the output to be <b>${y.toFixed(2)}</b>. Every number you'll see is computed live on this page.`,
+    },
+    {
+      kicker: 'Step 1 of 4', title: 'Forward pass — make a guess',
+      explain: `The signal flows <b>left to right</b>: each neuron sums its inputs × weights and squashes the result. The network guesses <b>ŷ = ${f.yhat.toFixed(2)}</b>. Notice the bottom hidden neuron computes exactly <b>0.00</b> — its two inputs cancelled out. Remember it.`,
+    },
+    {
+      kicker: 'Step 2 of 4', title: 'Compare — measure the error',
+      explain: `We wanted <b>${y.toFixed(2)}</b>, we got <b>${f.yhat.toFixed(2)}</b> — too low by ${Math.abs(e).toFixed(2)}. Squashing that miss into one number gives the loss: <b>L = ½(ŷ − y)² = ${f.loss.toFixed(3)}</b>. The whole point of what follows is to make this number smaller.`,
+    },
+    {
+      kicker: 'Step 3 of 4', title: 'Backward pass — blame flows right to left',
+      explain: `The error sweeps <b>backward</b>, and each weight receives its <b>blame</b> (its gradient): how much the loss would change if that weight were nudged up. It's just the chain rule — <i>blame arriving from the right × what flowed in from the left</i>. Look at the bottom-right connection: its blame is <b>exactly 0</b>, because the neuron behind it output 0.00 — a weight that contributed nothing learns nothing this round.`,
+    },
+    {
+      kicker: 'Step 4 of 4', title: 'Update — nudge all six weights at once',
+      explain: `Every weight takes one small step against its blame (η = ${LR}): <b>w ← w − η·blame</b>. Run the forward pass again with the new weights and the guess improves from ${f.yhat.toFixed(2)} to <b>${f2.yhat.toFixed(2)}</b>, the loss drops from ${f.loss.toFixed(3)} to <b style="color:#55d68b">${f2.loss.toFixed(3)}</b>. That's one learning step. Training = this, repeated thousands of times.`,
+    },
+  ];
 
-function runStaticForward() {
-  const output = staticNet.forward(STATIC_INPUT);
-  const target = parseFloat(document.getElementById('staticTarget').value);
-  const loss = staticNet.loss(output, [target]);
-  drawStaticNetwork(staticCanvas, staticNet);
-  updateStaticComparison(output[0]);
-  document.getElementById('staticLossValue').textContent = loss.toFixed(4);
-  document.getElementById('staticPredValue').textContent = output[0].toFixed(3);
-  document.getElementById('staticCoachTitle').textContent = 'The network made a guess';
-  document.getElementById('staticCoach').innerHTML =
-    `Its prediction is <b>${output[0].toFixed(3)}</b>, while your goal is <b>${target.toFixed(2)}</b>. ` +
-    'Now click <b>Learn from the mistake</b>.';
-  document.getElementById('staticForwardDetail').innerHTML =
-    `<strong>Forward pass:</strong> the input moved left to right through the network. No weights changed yet.`;
-}
+  let step = 0;
+  let animToken = 0;
 
-function confirmButtonAction(buttonId, label) {
-  const button = document.getElementById(buttonId);
-  button.originalLabel ||= button.textContent;
-  button.textContent = label;
-  button.classList.add('btn-confirmed');
-  clearTimeout(button.confirmTimeout);
-  button.confirmTimeout = setTimeout(() => {
-    button.textContent = button.originalLabel;
-    button.classList.remove('btn-confirmed');
-  }, 700);
-}
-
-function trainStaticStep() {
-  const target = parseFloat(document.getElementById('staticTarget').value);
-  const learningRate = parseFloat(document.getElementById('staticLR').value);
-
-  const before = staticNet.forward(STATIC_INPUT)[0];
-  staticNet.backward([target], learningRate);
-  const after = staticNet.forward(STATIC_INPUT)[0];
-  const loss = staticNet.loss([after], [target]);
-  staticLossHistory.push(loss);
-  staticStepCount++;
-
-  document.getElementById('staticLossValue').textContent = loss.toFixed(4);
-  document.getElementById('staticPredValue').textContent = after.toFixed(3);
-  document.getElementById('staticStepCount').textContent = staticStepCount;
-  document.getElementById('staticCoachTitle').textContent =
-    Math.abs(target - after) < Math.abs(target - before) ? 'The prediction moved closer' : 'The network made a small adjustment';
-  document.getElementById('staticCoach').innerHTML =
-    `Backpropagation assigned responsibility for the mistake and adjusted the connections. ` +
-    `The prediction moved from <b>${before.toFixed(3)}</b> to <b>${after.toFixed(3)}</b>.`;
-  updateStaticComparison(after);
-  document.getElementById('staticForwardDetail').innerHTML =
-    `<strong>Adjustment:</strong> prediction changed by ${(after - before).toFixed(6)}. ` +
-    `Small changes are normal; learning happens through repetition.`;
-  document.getElementById('staticBackpropDetail').innerHTML =
-    `<strong>Update ${staticStepCount}:</strong> prediction ${before.toFixed(6)} → ${after.toFixed(6)} toward target ${target.toFixed(2)}.`;
-
-  drawStaticNetwork(staticCanvas, staticNet);
-  drawStaticNetwork(staticGradCanvas, staticNet, true);
-  updateStaticChart();
-  confirmButtonAction('staticBackprop', 'Updated weights');
-}
-
-function sequenceForTask(task, length) {
-  if (task === 'counting') {
-    const pattern = [0.15, 0.45, 0.75];
+  const edgeColor = w => (w >= 0 ? '#6090ff' : '#ff6b72');
+  const edgeWidth = w => 1.5 + Math.min(5, Math.abs(w) * 5);
+  const trim = (a, b, r1, r2) => {
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
     return {
-      inputs: Array.from({ length }, (_, t) => [pattern[t % pattern.length]]),
-      targets: Array.from({ length }, (_, t) => [pattern[(t + 1) % pattern.length]]),
+      x1: a.x + dx / len * r1, y1: a.y + dy / len * r1,
+      x2: b.x - dx / len * r2, y2: b.y - dy / len * r2,
     };
-  }
-
-  if (task === 'addition') {
-    const values = Array.from({ length }, (_, t) => 0.06 + (t % 3) * 0.03);
-    let sum = 0;
-    return {
-      inputs: values.map(value => [value]),
-      targets: values.map(value => {
-        sum += value;
-        return [sum];
-      }),
-    };
-  }
-
-  return {
-    inputs: Array.from({ length }, (_, t) => [(Math.sin(t * 0.7) + 1) / 2]),
-    targets: Array.from({ length }, (_, t) => [(Math.sin((t + 1) * 0.7) + 1) / 2]),
   };
-}
 
-function currentSequence() {
-  const task = document.getElementById('dynamicTaskSelect').value;
-  const length = parseInt(document.getElementById('dynamicSteps').value);
-  return { task, ...sequenceForTask(task, length) };
-}
+  function node(p, label, value, opts = {}) {
+    const g = el('g');
+    g.appendChild(el('circle', {
+      cx: p.x, cy: p.y, r: R,
+      fill: opts.fill || '#151c2c',
+      stroke: opts.stroke || '#3a4666',
+      'stroke-width': opts.strokeWidth || 1.5,
+    }));
+    if (value != null) {
+      g.appendChild(el('text', {
+        x: p.x, y: p.y + 5, 'text-anchor': 'middle',
+        fill: opts.valueColor || '#eef1f7', 'font-size': 13.5, 'font-weight': 700,
+        'font-family': 'Inter, sans-serif', 'font-variant-numeric': 'tabular-nums',
+      }, value));
+    }
+    g.appendChild(el('text', {
+      x: p.x, y: p.y + R + 16, 'text-anchor': 'middle',
+      fill: '#9aa4b8', 'font-size': 10.5, 'font-weight': 700, 'font-family': 'Inter, sans-serif',
+    }, label));
+    svg.appendChild(g);
+  }
 
-function drawCurrentDynamic(showGradients = dynamicNet.gradientMagnitudes.length > 0) {
-  const length = parseInt(document.getElementById('dynamicSteps').value);
-  drawDynamicNetwork(dynamicCanvas, dynamicNet, length);
-  drawDynamicNetwork(dynamicGradCanvas, dynamicNet, length, showGradients);
-}
+  function pulse(edges, color, reverse, token) {
+    const t0 = performance.now();
+    const DUR = 750;
+    const layer = el('g');
+    svg.appendChild(layer);
+    function anim(t) {
+      if (token !== animToken) { layer.remove(); return; }
+      const u = Math.min(1, (t - t0) / DUR);
+      layer.innerHTML = '';
+      edges.forEach(ed => {
+        const { x1, y1, x2, y2 } = trim(ed.from, ed.to, R, R);
+        const a = reverse ? { x: x2, y: y2 } : { x: x1, y: y1 };
+        const b = reverse ? { x: x1, y: y1 } : { x: x2, y: y2 };
+        layer.appendChild(el('circle', {
+          cx: a.x + (b.x - a.x) * u, cy: a.y + (b.y - a.y) * u,
+          r: 5, fill: color, opacity: 0.95,
+        }));
+      });
+      if (u < 1) requestAnimationFrame(anim);
+      else layer.remove();
+    }
+    requestAnimationFrame(anim);
+  }
 
-function resetDynamicMetrics() {
-  dynamicLossHistory = [];
-  dynamicStepCount = 0;
-  document.getElementById('dynamicLossValue').textContent = '—';
-  document.getElementById('dynamicGradNorm').textContent = '—';
-  document.getElementById('dynamicStepCount').textContent = '0';
-  document.getElementById('dynamicBPTTDetail').innerHTML = '';
-  document.getElementById('dynamicCoachTitle').textContent = 'Ready to predict a sequence';
-  document.getElementById('dynamicCoach').innerHTML =
-    'Each purple memory circle receives the current input and a message from the previous timestep.';
-  updateDynamicChart();
-}
+  function render() {
+    animToken++;
+    const token = animToken;
+    svg.innerHTML = '';
+    const s = step;
+    const showActs = s >= 1;
+    const useNew = s >= 4;
 
-function rebuildDynamicNetwork() {
-  const hiddenSize = parseInt(document.getElementById('dynamicHidden').value);
-  dynamicNet = new SimpleRNN(1, hiddenSize, 1);
-  const { inputs } = currentSequence();
-  dynamicNet.forward(inputs);
-  resetDynamicMetrics();
-  drawCurrentDynamic(false);
-}
+    // edges
+    EDGES.forEach(ed => {
+      const w = useNew ? ed.wNew : ed.w;
+      const { x1, y1, x2, y2 } = trim(ed.from, ed.to, R, R);
+      svg.appendChild(el('line', {
+        x1, y1, x2, y2,
+        stroke: edgeColor(w), 'stroke-width': edgeWidth(w),
+        'stroke-opacity': s === 3 ? 0.35 : 0.85, 'stroke-linecap': 'round',
+      }));
+      // weight label at 38% along the edge
+      const lx = x1 + (x2 - x1) * 0.38, ly = y1 + (y2 - y1) * 0.38 - 7;
+      svg.appendChild(el('text', {
+        x: lx, y: ly, 'text-anchor': 'middle', fill: edgeColor(w),
+        'font-size': 11, 'font-weight': 700, 'font-family': 'Inter, sans-serif',
+        'font-variant-numeric': 'tabular-nums',
+      }, (useNew ? '' : 'w ') + w.toFixed(2)));
+      // blame badge at 62% (step 3 only)
+      if (s === 3) {
+        const bx = x1 + (x2 - x1) * 0.62, by = y1 + (y2 - y1) * 0.62 + 2;
+        const zero = Math.abs(ed.g) < 1e-9;
+        const bg = el('g');
+        bg.appendChild(el('rect', {
+          x: bx - 33, y: by - 11, width: 66, height: 20, rx: 6,
+          fill: zero ? '#1a1f2e' : 'rgba(255,209,102,0.13)',
+          stroke: zero ? '#3a4666' : '#ffd166', 'stroke-width': 1,
+        }));
+        bg.appendChild(el('text', {
+          x: bx, y: by + 3.5, 'text-anchor': 'middle',
+          fill: zero ? '#9aa4b8' : '#ffd166', 'font-size': 10.5, 'font-weight': 700,
+          'font-family': 'Inter, sans-serif', 'font-variant-numeric': 'tabular-nums',
+        }, 'blame ' + fmt(ed.g, 2)));
+        svg.appendChild(bg);
+      }
+    });
 
-function runDynamicForward() {
-  const { task, inputs, targets } = currentSequence();
-  const { y } = dynamicNet.forward(inputs);
-  const loss = dynamicNet.loss(y, targets);
-  drawCurrentDynamic(false);
-  document.getElementById('dynamicLossValue').textContent = loss.toFixed(4);
-  document.getElementById('dynamicCoachTitle').textContent = 'The network predicted every timestep';
-  document.getElementById('dynamicCoach').innerHTML =
-    `The purple memory moved forward through the sequence. The network's total mistake is <b>${loss.toFixed(4)}</b>. ` +
-    'Now let feedback travel backward through time.';
-  document.getElementById('dynamicBPTTDetail').innerHTML =
-    `<strong>Predictions:</strong> ${y.map(v => v[0].toFixed(2)).join(' → ')}<br>` +
-    `<strong>Goals:</strong> ${targets.map(v => v[0].toFixed(2)).join(' → ')}`;
-}
+    // nodes
+    const acts = useNew ? f2 : f;
+    node(IN[0], 'input x₁', x[0].toFixed(2));
+    node(IN[1], 'input x₂', x[1].toFixed(2));
+    node(HID[0], 'hidden h₁', showActs ? acts.h[0].toFixed(2) : '·');
+    node(HID[1], 'hidden h₂', showActs ? acts.h[1].toFixed(2) : '·');
+    node(OUT, 'output ŷ', showActs ? acts.yhat.toFixed(2) : '?', {
+      stroke: s === 2 ? '#ff6b72' : s >= 4 ? '#55d68b' : '#3a4666',
+      strokeWidth: s >= 2 ? 2.5 : 1.5,
+      valueColor: s === 2 ? '#ff6b72' : s >= 4 ? '#55d68b' : '#eef1f7',
+    });
 
-function trainDynamicStep() {
-  const { task, inputs, targets } = currentSequence();
-  const learningRate = parseFloat(document.getElementById('dynamicLR').value);
+    // target + loss readout (steps >= 2)
+    if (s >= 2) {
+      const g = el('g');
+      g.appendChild(el('text', {
+        x: OUT.x, y: OUT.y - R - 30, 'text-anchor': 'middle',
+        fill: '#55d68b', 'font-size': 11.5, 'font-weight': 700, 'font-family': 'Inter, sans-serif',
+      }, `target y = ${y.toFixed(2)}`));
+      g.appendChild(el('text', {
+        x: OUT.x, y: OUT.y - R - 14, 'text-anchor': 'middle',
+        fill: s >= 4 ? '#55d68b' : '#ff6b72', 'font-size': 12, 'font-weight': 800,
+        'font-family': 'Inter, sans-serif', 'font-variant-numeric': 'tabular-nums',
+      }, s >= 4 ? `loss ${f.loss.toFixed(3)} → ${f2.loss.toFixed(3)} ✓` : `loss = ${f.loss.toFixed(3)}`));
+      svg.appendChild(g);
+    }
 
-  dynamicNet.forward(inputs);
-  const gradNorm = dynamicNet.backward(targets, learningRate);
-  const outputs = dynamicNet.forward(inputs).y;
-  const loss = dynamicNet.loss(outputs, targets);
-  dynamicLossHistory.push(loss);
-  dynamicStepCount++;
+    // direction banner
+    if (s === 1 || s === 3) {
+      svg.appendChild(el('text', {
+        x: 340, y: 22, 'text-anchor': 'middle',
+        fill: s === 1 ? '#6090ff' : '#ffd166', 'font-size': 11.5, 'font-weight': 800,
+        'font-family': 'Inter, sans-serif', 'letter-spacing': '0.08em',
+      }, s === 1 ? 'SIGNAL →' : '← BLAME'));
+    }
 
-  document.getElementById('dynamicLossValue').textContent = loss.toFixed(4);
-  document.getElementById('dynamicGradNorm').textContent = gradNorm.toFixed(4);
-  document.getElementById('dynamicStepCount').textContent = dynamicStepCount;
-  document.getElementById('dynamicCoachTitle').textContent = 'The shared connections were adjusted';
-  document.getElementById('dynamicCoach').innerHTML =
-    `Feedback traveled from later timesteps toward earlier memories. All ${targets.length} timesteps helped update the same shared connections.`;
-  document.getElementById('dynamicBPTTDetail').innerHTML =
-    `<strong>Learning step ${dynamicStepCount}:</strong> sequence mistake is now ${loss.toFixed(4)}.`;
+    // animations
+    if (s === 1) {
+      pulse(EDGES.slice(0, 4), '#6090ff', false, token);
+      setTimeout(() => { if (token === animToken) pulse(EDGES.slice(4), '#6090ff', false, token); }, 780);
+    } else if (s === 3) {
+      pulse(EDGES.slice(4), '#ffd166', true, token);
+      setTimeout(() => { if (token === animToken) pulse(EDGES.slice(0, 4), '#ffd166', true, token); }, 780);
+    }
 
-  drawCurrentDynamic(true);
-  updateDynamicChart();
-  confirmButtonAction('dynamicBPTT', 'Updated shared weights');
-}
+    // chrome
+    titleEl.innerHTML = `<small>${STEPS[s].kicker}</small>${STEPS[s].title}`;
+    explainEl.innerHTML = STEPS[s].explain;
+    dotsEl.innerHTML = '';
+    STEPS.forEach((_, i) => {
+      const d = document.createElement('span');
+      d.className = 'step-dot' + (i === s ? ' current' : i < s ? ' done' : '');
+      dotsEl.appendChild(d);
+    });
+    prevBtn.disabled = s === 0;
+    nextBtn.disabled = s === STEPS.length - 1;
+  }
 
-document.querySelectorAll('.mode-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.mode-content').forEach(m => m.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById(btn.dataset.mode + 'Mode').classList.add('active');
-    updateStaticChart();
-    updateDynamicChart();
+  prevBtn.addEventListener('click', () => { if (step > 0) { step--; render(); } });
+  nextBtn.addEventListener('click', () => { if (step < STEPS.length - 1) { step++; render(); } });
+  render();
+})();
+
+/* ===================== 3. WATCH IT LEARN ===================== */
+(() => {
+  const fitSvg = document.getElementById('fitSvg');
+  const lossSvg = document.getElementById('lossSvg');
+  const netSvg = document.getElementById('netSvg');
+  const stepsEl = document.getElementById('trSteps');
+  const lossEl = document.getElementById('trLoss');
+  const playBtn = document.getElementById('trPlay');
+
+  const H = 6;                      // hidden neurons
+  const LR = 0.04;
+  const target = x => 0.62 * Math.sin(2.6 * x) + 0.18 * x;
+  const XS = Array.from({ length: 33 }, (_, i) => -1 + 2 * i / 32);
+  const YS = XS.map(target);
+
+  let w1, b1, w2, b2, steps, lossHist, playing = false, raf = null;
+
+  function init() {
+    const r = () => (Math.random() - 0.5) * 1.6;
+    w1 = Array.from({ length: H }, r);
+    b1 = Array.from({ length: H }, r);
+    w2 = Array.from({ length: H }, r);
+    b2 = 0;
+    steps = 0;
+    lossHist = [];
+  }
+
+  function predict(x) {
+    let out = b2;
+    for (let j = 0; j < H; j++) out += w2[j] * Math.tanh(w1[j] * x + b1[j]);
+    return out;
+  }
+
+  function trainSteps(n) {
+    for (let s = 0; s < n; s++) {
+      const gw1 = new Array(H).fill(0), gb1 = new Array(H).fill(0), gw2 = new Array(H).fill(0);
+      let gb2 = 0, loss = 0;
+      for (let i = 0; i < XS.length; i++) {
+        const x = XS[i];
+        const hin = new Array(H), h = new Array(H);
+        let yhat = b2;
+        for (let j = 0; j < H; j++) {
+          hin[j] = w1[j] * x + b1[j];
+          h[j] = Math.tanh(hin[j]);
+          yhat += w2[j] * h[j];
+        }
+        const e = yhat - YS[i];
+        loss += 0.5 * e * e;
+        gb2 += e;
+        for (let j = 0; j < H; j++) {
+          gw2[j] += e * h[j];
+          const gh = e * w2[j] * (1 - h[j] * h[j]);
+          gw1[j] += gh * x;
+          gb1[j] += gh;
+        }
+      }
+      const n_ = XS.length;
+      for (let j = 0; j < H; j++) {
+        w1[j] -= LR * gw1[j] / n_;
+        b1[j] -= LR * gb1[j] / n_;
+        w2[j] -= LR * gw2[j] / n_;
+      }
+      b2 -= LR * gb2 / n_;
+      steps++;
+      if (steps % 20 === 0) lossHist.push(loss / n_);
+      if (lossHist.length > 220) lossHist.shift();
+    }
+  }
+
+  const FX = x => 30 + (x + 1) / 2 * 410;
+  const FY = y => 150 - y * 115;
+
+  function pathOf(fn) {
+    let d = '';
+    for (let px = 0; px <= 100; px++) {
+      const x = -1 + 2 * px / 100;
+      d += (d ? ' L ' : 'M ') + FX(x).toFixed(1) + ' ' + FY(fn(x)).toFixed(1);
+    }
+    return d;
+  }
+
+  function draw() {
+    // fit plot
+    fitSvg.innerHTML = '';
+    fitSvg.appendChild(el('line', { x1: 30, y1: 150, x2: 440, y2: 150, stroke: '#263149', 'stroke-width': 1 }));
+    fitSvg.appendChild(el('path', { d: pathOf(target), fill: 'none', stroke: '#9aa4b8', 'stroke-width': 2, 'stroke-dasharray': '6 5' }));
+    XS.filter((_, i) => i % 2 === 0).forEach((x, i) => {
+      fitSvg.appendChild(el('circle', { cx: FX(x), cy: FY(target(x)), r: 2.5, fill: '#9aa4b8', opacity: 0.6 }));
+    });
+    fitSvg.appendChild(el('path', { d: pathOf(predict), fill: 'none', stroke: '#55d68b', 'stroke-width': 2.8 }));
+
+    // loss sparkline
+    lossSvg.innerHTML = '';
+    if (lossHist.length > 1) {
+      const max = Math.max(...lossHist, 1e-6);
+      let d = '';
+      lossHist.forEach((l, i) => {
+        const px = 6 + i / (lossHist.length - 1) * 188;
+        const py = 62 - (l / max) * 52;
+        d += (d ? ' L ' : 'M ') + px.toFixed(1) + ' ' + py.toFixed(1);
+      });
+      lossSvg.appendChild(el('path', { d, fill: 'none', stroke: '#ffd166', 'stroke-width': 2 }));
+    }
+
+    // live network
+    netSvg.innerHTML = '';
+    const inP = { x: 25, y: 75 };
+    const hidP = Array.from({ length: H }, (_, j) => ({ x: 100, y: 15 + j * 24 }));
+    const outP = { x: 175, y: 75 };
+    hidP.forEach((p, j) => {
+      netSvg.appendChild(el('line', {
+        x1: inP.x, y1: inP.y, x2: p.x, y2: p.y,
+        stroke: w1[j] >= 0 ? '#6090ff' : '#ff6b72',
+        'stroke-width': Math.min(4.5, 0.4 + Math.abs(w1[j]) * 1.4), 'stroke-opacity': 0.8,
+      }));
+      netSvg.appendChild(el('line', {
+        x1: p.x, y1: p.y, x2: outP.x, y2: outP.y,
+        stroke: w2[j] >= 0 ? '#6090ff' : '#ff6b72',
+        'stroke-width': Math.min(4.5, 0.4 + Math.abs(w2[j]) * 1.4), 'stroke-opacity': 0.8,
+      }));
+    });
+    [inP, ...hidP, outP].forEach(p => {
+      netSvg.appendChild(el('circle', { cx: p.x, cy: p.y, r: 6, fill: '#151c2c', stroke: '#3a4666', 'stroke-width': 1.2 }));
+    });
+
+    stepsEl.textContent = steps.toLocaleString();
+    lossEl.textContent = lossHist.length ? lossHist[lossHist.length - 1].toFixed(4) : '—';
+  }
+
+  function loop() {
+    trainSteps(25);
+    draw();
+    if (playing) raf = requestAnimationFrame(loop);
+  }
+
+  playBtn.addEventListener('click', () => {
+    playing = !playing;
+    playBtn.textContent = playing ? '⏸ Pause' : '▶ Train';
+    if (playing) loop();
+    else cancelAnimationFrame(raf);
   });
-});
-
-document.getElementById('staticLayers').addEventListener('input', e => {
-  document.getElementById('staticLayersOut').textContent = e.target.value;
-  rebuildStaticNetwork();
-});
-document.getElementById('staticNeurons').addEventListener('input', e => {
-  document.getElementById('staticNeuronsOut').textContent = e.target.value;
-  rebuildStaticNetwork();
-});
-document.getElementById('staticForward').addEventListener('click', runStaticForward);
-document.getElementById('staticBackprop').addEventListener('click', trainStaticStep);
-document.getElementById('staticTrain').addEventListener('click', () => {
-  for (let i = 0; i < 20; i++) trainStaticStep();
-});
-document.getElementById('staticReset').addEventListener('click', rebuildStaticNetwork);
-
-document.getElementById('dynamicForward').addEventListener('click', runDynamicForward);
-document.getElementById('dynamicBPTT').addEventListener('click', trainDynamicStep);
-document.getElementById('dynamicTrain').addEventListener('click', () => {
-  for (let i = 0; i < 5; i++) trainDynamicStep();
-});
-document.getElementById('dynamicReset').addEventListener('click', rebuildDynamicNetwork);
-document.getElementById('dynamicTaskSelect').addEventListener('change', rebuildDynamicNetwork);
-
-// ============ CHARTS ============
-function drawLossChart(canvas, history, color) {
-  canvas.width = 900;
-  canvas.height = 250;
-  const ctx = canvas.getContext('2d');
-  const width = canvas.width;
-  const height = canvas.height;
-  const pad = { left: 52, right: 20, top: 20, bottom: 32 };
-
-  ctx.fillStyle = '#131826';
-  ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = '#232b40';
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 4; i++) {
-    const y = pad.top + ((height - pad.top - pad.bottom) * i) / 4;
-    ctx.beginPath();
-    ctx.moveTo(pad.left, y);
-    ctx.lineTo(width - pad.right, y);
-    ctx.stroke();
-  }
-
-  ctx.fillStyle = '#8b93a7';
-  ctx.font = '12px Inter, sans-serif';
-  if (history.length === 0) {
-    ctx.fillText('Repeat learning to see the mistake shrink.', pad.left, height / 2);
-    return;
-  }
-
-  const maxLoss = Math.max(...history, 0.0001) * 1.08;
-  ctx.fillText(maxLoss.toFixed(3), 8, pad.top + 4);
-  ctx.fillText('0', 36, height - pad.bottom + 4);
-  ctx.fillText(`step ${history.length}`, width - 72, height - 8);
-
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 3;
-  ctx.lineJoin = 'round';
-  ctx.beginPath();
-  history.forEach((loss, i) => {
-    const x = pad.left + (i / Math.max(1, history.length - 1)) * (width - pad.left - pad.right);
-    const y = height - pad.bottom - (loss / maxLoss) * (height - pad.top - pad.bottom);
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
+  document.getElementById('trStep').addEventListener('click', () => { trainSteps(100); draw(); });
+  document.getElementById('trReset').addEventListener('click', () => {
+    playing = false;
+    playBtn.textContent = '▶ Train';
+    cancelAnimationFrame(raf);
+    init();
+    draw();
   });
-  if (history.length === 1) ctx.lineTo(pad.left + 1, height - pad.bottom - (history[0] / maxLoss) * (height - pad.top - pad.bottom));
-  ctx.stroke();
-}
 
-function updateStaticChart() {
-  drawLossChart(document.getElementById('staticLossChart'), staticLossHistory, '#5b8cff');
-}
-
-function updateDynamicChart() {
-  drawLossChart(document.getElementById('dynamicLossChart'), dynamicLossHistory, '#ff6b6b');
-}
-
-function drawGradientFlow() {
-  const canvas = document.getElementById('gradientFlow');
-  canvas.width = 900;
-  canvas.height = 250;
-  const ctx = canvas.getContext('2d');
-  const width = canvas.width;
-  const height = canvas.height;
-  const tau = parseFloat(document.getElementById('timeConstant').value);
-  const steps = 16;
-  const pad = 36;
-
-  ctx.fillStyle = '#131826';
-  ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = '#232b40';
-  for (let i = 0; i <= 4; i++) {
-    const y = pad + ((height - pad * 2) * i) / 4;
-    ctx.beginPath();
-    ctx.moveTo(pad, y);
-    ctx.lineTo(width - pad, y);
-    ctx.stroke();
-  }
-
-  ctx.strokeStyle = '#ff6b6b';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  for (let t = 0; t < steps; t++) {
-    const magnitude = Math.exp(-(steps - 1 - t) / tau);
-    const x = pad + (t / (steps - 1)) * (width - pad * 2);
-    const y = height - pad - magnitude * (height - pad * 2);
-    if (t === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.stroke();
-
-  ctx.fillStyle = '#8b93a7';
-  ctx.font = '12px Inter, sans-serif';
-  ctx.fillText('early timestep', pad, height - 10);
-  ctx.textAlign = 'right';
-  ctx.fillText('loss / latest timestep', width - pad, height - 10);
-  ctx.textAlign = 'left';
-  ctx.fillText('gradient magnitude', pad, 18);
-}
-
-document.getElementById('visualizeGradient').addEventListener('click', drawGradientFlow);
-document.getElementById('timeConstant').addEventListener('input', e => {
-  document.getElementById('timeConstantOut').textContent = parseFloat(e.target.value).toFixed(1);
-  drawGradientFlow();
-});
-document.getElementById('staticTarget').addEventListener('input', e => {
-  document.getElementById('staticTargetOut').textContent = e.target.value;
-  updateStaticComparison(staticNet.activations.at(-1)?.[0] ?? null);
-});
-document.getElementById('staticLR').addEventListener('input', e => {
-  document.getElementById('staticLROut').textContent = e.target.value;
-});
-document.getElementById('dynamicLR').addEventListener('input', e => {
-  document.getElementById('dynamicLROut').textContent = e.target.value;
-});
-document.getElementById('dynamicSteps').addEventListener('input', e => {
-  document.getElementById('dynamicStepsOut').textContent = e.target.value;
-  rebuildDynamicNetwork();
-});
-document.getElementById('dynamicHidden').addEventListener('input', e => {
-  document.getElementById('dynamicHiddenOut').textContent = e.target.value;
-  rebuildDynamicNetwork();
-});
-
-rebuildStaticNetwork();
-rebuildDynamicNetwork();
-drawGradientFlow();
+  init();
+  draw();
+})();

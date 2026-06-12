@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>How Backpropagation Works — Interactive Explainer</title>
+  <title>Backpropagation, Explained Simply — Interactive Explainer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <script>
@@ -17,303 +17,124 @@
 
   <main>
     <header class="hero">
-      <span class="eyebrow">A beginner-friendly visual guide</span>
-      <h1>How a neural network learns</h1>
-      <p class="hero-sub">A network learns by making a guess, measuring how wrong it was, and adjusting itself to make a slightly better guess next time. That adjustment process is <b>backpropagation</b>.</p>
+      <span class="eyebrow">Training · How networks learn</span>
+      <h1>Backpropagation, explained simply</h1>
+      <p class="hero-sub">A neural network learns the way you'd tune a radio with a thousand dials: <b>make a guess, measure how wrong it was, and figure out which way to turn each dial to be a little less wrong.</b> Backpropagation is the trick that finds the right direction for <i>every</i> dial at once. Three pictures are enough to understand it.</p>
+      <div class="loop-strip" aria-label="The learning loop">
+        <div class="loop-step"><b>Predict</b><small>make a guess</small></div>
+        <span class="loop-arrow">→</span>
+        <div class="loop-step"><b>Compare</b><small>measure the error</small></div>
+        <span class="loop-arrow">→</span>
+        <div class="loop-step"><b>Adjust</b><small>nudge every weight</small></div>
+        <span class="loop-arrow">→</span>
+        <div class="loop-step"><b>Repeat</b><small>thousands of times</small></div>
+      </div>
     </header>
 
-    <section class="mental-model" aria-label="The learning loop">
-      <div class="loop-step"><span>1</span><b>Predict</b><small>Make a guess</small></div>
-      <div class="loop-arrow">→</div>
-      <div class="loop-step"><span>2</span><b>Compare</b><small>Measure the mistake</small></div>
-      <div class="loop-arrow">→</div>
-      <div class="loop-step"><span>3</span><b>Adjust</b><small>Change useful weights</small></div>
-      <div class="loop-arrow">→</div>
-      <div class="loop-step"><span>4</span><b>Repeat</b><small>Improve gradually</small></div>
+    <!-- ===================== 1. ONE KNOB ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Picture 1 · One weight</p>
+      <h2>Learning is walking downhill</h2>
+      <p class="lead">Forget the network for a second — imagine it has just <b>one weight</b>. For every value of that weight, the network makes some error (the <b>loss</b>). Plot loss against weight and you get a valley. Learning means walking to the bottom. The <b>gradient is simply the slope under your feet</b> — it tells you which way is downhill and how steep it is. <b>Drag the ball</b>, then take steps:</p>
+      <div class="viz-box">
+        <div class="hill-grid">
+          <svg id="hillSvg" viewBox="0 0 460 300" aria-label="Loss valley with draggable ball and tangent line"></svg>
+          <div class="hill-side">
+            <div class="readout-list">
+              <div class="readout"><span>weight w</span><b id="roW">2.60</b></div>
+              <div class="readout"><span>loss L(w)</span><b id="roL">1.22</b></div>
+              <div class="readout"><span>slope (gradient)</span><b id="roG">+1.50</b></div>
+              <div class="readout dir"><span>so move…</span><b id="roDir">← left</b></div>
+            </div>
+            <p class="control-label">Step size (learning rate η)</p>
+            <div class="lr-chips">
+              <button class="chip" data-lr="0.1">0.1 · timid</button>
+              <button class="chip active" data-lr="0.8">0.8 · good</button>
+              <button class="chip" data-lr="2.1">2.1 · reckless</button>
+            </div>
+            <div class="hill-actions">
+              <button class="btn primary" id="hillStep">Take one step</button>
+              <button class="btn" id="hillAuto">▶ Walk down</button>
+            </div>
+            <p class="caption" id="hillCaption">Each step moves the weight <b>against</b> the slope: downhill.</p>
+          </div>
+        </div>
+      </div>
+      <div class="formula">$$w \;\leftarrow\; w - \eta \cdot \underbrace{\frac{\partial L}{\partial w}}_{\text{the slope}}$$</div>
+      <p class="note"><b>Try the reckless step size.</b> With η = 2.1 each step overshoots the bottom and lands higher on the other side — the loss <i>explodes</i>. This one-line update rule, with a sensible η, is the entire learning algorithm. The only open question is: with millions of weights, <b>how do we get the slope for each one?</b> That's backpropagation.</p>
     </section>
 
-    <section class="panel mode-panel">
-      <p class="section-kicker">Choose an example</p>
-      <div class="mode-selector">
-        <button class="mode-btn active" data-mode="static">
-          <span class="mode-number">1</span>
-          <span class="mode-copy">
-            <span class="mode-name">Start here: one prediction</span>
-            <span class="mode-desc">See the basic learning loop</span>
-          </span>
-        </button>
-        <button class="mode-btn" data-mode="dynamic">
-          <span class="mode-number">2</span>
-          <span class="mode-copy">
-            <span class="mode-name">Then: a sequence with memory</span>
-            <span class="mode-desc">See backpropagation through time</span>
-          </span>
-        </button>
+    <!-- ===================== 2. THE BACKWARD PASS ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Picture 2 · The backward pass</p>
+      <h2>The error flows backward and assigns blame</h2>
+      <p class="lead">Here is a real network with six weights, computed live. Watch one full learning step in four moves — <b>click Next</b>:</p>
+      <div class="stepper">
+        <div class="stepper-head">
+          <button class="btn" id="bpPrev">← Back</button>
+          <div class="step-dots" id="bpDots"></div>
+          <button class="btn primary" id="bpNext">Next →</button>
+        </div>
+        <div class="step-title" id="bpTitle"></div>
+        <svg id="bpSvg" viewBox="0 0 680 270" aria-label="Tiny network animating forward and backward passes"></svg>
+        <div class="step-explain" id="bpExplain"></div>
+      </div>
+      <p class="note"><b>Why “back”-propagation?</b> A weight deep in the network affects the loss only <i>through</i> everything after it. The chain rule says: multiply the slopes along the path. Starting from the error and sweeping right-to-left, each layer reuses the slopes already computed to its right — so <b>one backward sweep prices every weight</b>, no matter how many millions there are.</p>
+    </section>
+
+    <!-- ===================== 3. WATCH IT LEARN ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Picture 3 · The loop, thousands of times</p>
+      <h2>Watch a network learn, live</h2>
+      <p class="lead">This little network (1 input → 6 hidden neurons → 1 output) is training <b>right now, in your browser</b>, to imitate the dashed curve. Every frame it runs the exact loop from above: predict, compare, backpropagate, nudge. Press play:</p>
+      <div class="viz-box">
+        <div class="train-grid">
+          <div>
+            <svg id="fitSvg" viewBox="0 0 460 300" aria-label="Model curve fitting a dashed target curve"></svg>
+            <p class="caption center"><span class="key dashed"></span> target&nbsp;&nbsp;<span class="key solid"></span> network's current guess</p>
+          </div>
+          <div class="train-side">
+            <div class="readout-list">
+              <div class="readout"><span>learning steps</span><b id="trSteps">0</b></div>
+              <div class="readout"><span>loss</span><b id="trLoss">—</b></div>
+            </div>
+            <svg id="lossSvg" viewBox="0 0 200 70" aria-label="Loss falling over time"></svg>
+            <p class="caption">The loss — the average miss across all points — falling as the network walks downhill.</p>
+            <div class="hill-actions">
+              <button class="btn primary" id="trPlay">▶ Train</button>
+              <button class="btn" id="trStep">+100 steps</button>
+              <button class="btn" id="trReset">↺ Reset</button>
+            </div>
+            <svg id="netSvg" viewBox="0 0 200 150" aria-label="Live network weights"></svg>
+            <p class="caption">The weights, live. Thickness = strength, <span class="c-blue">blue</span> = positive, <span class="c-red">red</span> = negative.</p>
+          </div>
+        </div>
+      </div>
+      <p class="note"><b>Nothing else is happening.</b> No rules about curves were programmed in — just six numbers in, the update rule from Picture 1, and the blame assignment from Picture 2, repeated. This same loop, scaled to billions of weights, is how every modern AI model is trained.</p>
+    </section>
+
+    <!-- ===================== TAKEAWAYS ===================== -->
+    <section class="panel takeaways">
+      <p class="section-kicker">If you remember three things</p>
+      <h2>The whole page in three sentences</h2>
+      <div class="takeaway-grid">
+        <div class="takeaway">
+          <b>The gradient is a slope</b>
+          <p>For each weight: “if I nudge this up, does the error grow or shrink?” Learning = step against the slope, scaled by the learning rate.</p>
+        </div>
+        <div class="takeaway">
+          <b>Backprop assigns blame</b>
+          <p>One backward sweep through the network gives every weight its share of the error, using the chain rule: multiply the slopes along the path.</p>
+        </div>
+        <div class="takeaway">
+          <b>Training is just repetition</b>
+          <p>Predict, compare, backpropagate, nudge — a tiny improvement each time, repeated millions of times. That's all “training” means.</p>
+        </div>
       </div>
     </section>
 
-    <div id="staticMode" class="mode-content active">
-      <section class="panel lesson-panel">
-        <div class="panel-head">
-          <p class="section-kicker">The basic learning loop</p>
-          <h2>Teach the network to output your goal</h2>
-          <p>The input is always <b>1.00</b>. The network begins with random connection strengths, so its first prediction will probably miss your goal.</p>
-        </div>
-
-        <div class="lesson-grid">
-          <div class="visual-column">
-            <div class="stage stage-labelled">
-              <div class="stage-caption"><span class="dot blue"></span> Blue shows the forward prediction</div>
-              <svg id="staticNet" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid meet" aria-label="Network making a prediction"></svg>
-            </div>
-
-            <div class="goal-control">
-              <div>
-                <label for="staticTarget">What should the network learn?</label>
-                <p>Move the goal, then train the network toward it.</p>
-              </div>
-              <input id="staticTarget" type="range" min="0" max="1" step="0.05" value="0.8" />
-              <output id="staticTargetOut">0.8</output>
-            </div>
-
-            <div class="primary-actions">
-              <button id="staticForward" class="btn btn-secondary">1. Make a prediction</button>
-              <button id="staticBackprop" class="btn btn-accent">2. Learn from the mistake</button>
-              <button id="staticTrain" class="btn">Repeat learning 20 times</button>
-              <button id="staticReset" class="btn btn-ghost">Start over</button>
-            </div>
-
-            <details class="advanced-controls">
-              <summary>Experiment with the network</summary>
-              <p>These settings are optional. A bigger network has more adjustable connections; the learning rate controls how large each adjustment is.</p>
-              <div class="controls">
-                <div class="ctrl">
-                  <label for="staticLayers">Number of layers</label>
-                  <input id="staticLayers" type="range" min="2" max="4" step="1" value="3" />
-                  <output id="staticLayersOut">3</output>
-                </div>
-                <div class="ctrl">
-                  <label for="staticNeurons">Neurons in hidden layers</label>
-                  <input id="staticNeurons" type="range" min="2" max="5" step="1" value="3" />
-                  <output id="staticNeuronsOut">3</output>
-                </div>
-                <div class="ctrl">
-                  <label for="staticLR">Learning rate</label>
-                  <input id="staticLR" type="range" min="0.001" max="0.5" step="0.01" value="0.2" />
-                  <output id="staticLROut">0.2</output>
-                </div>
-              </div>
-            </details>
-          </div>
-
-          <aside class="coach-card">
-            <p class="section-kicker">What is happening?</p>
-            <h3 id="staticCoachTitle">Ready to make a prediction</h3>
-            <p id="staticCoach">Click <b>Make a prediction</b>. The signal will travel from left to right through the blue network.</p>
-
-            <div class="comparison" aria-label="Prediction compared with target">
-              <div class="compare-row">
-                <div class="compare-label"><span>Prediction</span><strong id="staticPredictionText">—</strong></div>
-                <div class="compare-track"><span id="staticPredictionBar" class="compare-fill prediction"></span></div>
-              </div>
-              <div class="compare-row">
-                <div class="compare-label"><span>Your goal</span><strong id="staticTargetText">0.80</strong></div>
-                <div class="compare-track"><span id="staticTargetBar" class="compare-fill target"></span></div>
-              </div>
-              <p id="staticGapText" class="gap-text">Make a prediction to see the mistake.</p>
-            </div>
-
-            <div class="mini-metrics">
-              <div><span>Mistake size</span><strong id="staticLossValue">—</strong></div>
-              <div><span>Learning steps</span><strong id="staticStepCount">0</strong></div>
-              <span id="staticPredValue" hidden>—</span>
-            </div>
-
-            <div id="staticForwardDetail" class="coach-detail"></div>
-          </aside>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <p class="section-kicker">What backpropagation does</p>
-          <h2>It sends responsibility backward</h2>
-          <p>The network checks which connections contributed to the mistake. Stronger red lines receive larger adjustments.</p>
-        </div>
-
-        <div class="explain-grid">
-          <div class="plain-steps">
-            <article><span>1</span><div><h3>Measure the mistake</h3><p>Compare the prediction with your goal. This difference becomes the <b>loss</b>.</p></div></article>
-            <article><span>2</span><div><h3>Trace responsibility backward</h3><p>Work from the output back toward the input to estimate how much each connection mattered.</p></div></article>
-            <article><span>3</span><div><h3>Nudge the connections</h3><p>Adjust each weight a little. One step is small, but repeated steps steadily improve the prediction.</p></div></article>
-          </div>
-          <div>
-            <div class="stage stage-labelled gradient-stage">
-              <div class="stage-caption"><span class="dot red"></span> Brighter red means a larger adjustment</div>
-              <svg id="staticGradNet" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid meet" aria-label="Responsibility flowing backward"></svg>
-            </div>
-            <div id="staticBackpropDetail" class="coach-detail"></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <p class="section-kicker">Watch improvement over time</p>
-          <h2>The mistake should get smaller</h2>
-          <p>Click <b>Repeat learning 20 times</b>. A downward line means the network is learning.</p>
-        </div>
-        <div class="training-graph">
-          <canvas id="staticLossChart"></canvas>
-        </div>
-      </section>
-
-      <details class="panel math-details">
-        <summary>Show the math behind the basic learning loop</summary>
-        <div class="math-grid">
-          <div><h3>Make a prediction</h3><div class="formula">$$ a^{(l)} = \sigma(W^{(l)}a^{(l-1)} + b^{(l)}) $$</div><p>Each layer combines incoming values using weights, adds a bias, then applies an activation function.</p></div>
-          <div><h3>Measure the mistake</h3><div class="formula">$$ L = \frac{1}{2}(\hat{y} - y)^2 $$</div><p>The loss is a single number describing how far the prediction is from the goal.</p></div>
-          <div><h3>Adjust a weight</h3><div class="formula">$$ W \leftarrow W - \alpha \frac{\partial L}{\partial W} $$</div><p>The gradient says which direction reduces the mistake; the learning rate controls the step size.</p></div>
-        </div>
-      </details>
-    </div>
-
-    <div id="dynamicMode" class="mode-content">
-      <section class="panel lesson-panel">
-        <div class="panel-head">
-          <p class="section-kicker">The same loop, now with memory</p>
-          <h2>Teach a network to predict a sequence</h2>
-          <p>An RNN carries a small memory from one timestep to the next. It must learn from every prediction in the sequence, so responsibility flows backward through time.</p>
-        </div>
-
-        <div class="lesson-grid">
-          <div class="visual-column">
-            <div class="stage stage-labelled">
-              <div class="stage-caption"><span class="dot purple"></span> Purple circles carry memory forward</div>
-              <svg id="dynamicNet" viewBox="0 0 500 350" preserveAspectRatio="xMidYMid meet" aria-label="Sequence network carrying memory forward"></svg>
-            </div>
-            <div class="primary-actions">
-              <button id="dynamicForward" class="btn btn-secondary">1. Predict the sequence</button>
-              <button id="dynamicBPTT" class="btn btn-accent">2. Learn from the sequence</button>
-              <button id="dynamicTrain" class="btn">Repeat learning 5 times</button>
-              <button id="dynamicReset" class="btn btn-ghost">Start over</button>
-            </div>
-            <details class="advanced-controls">
-              <summary>Change the sequence experiment</summary>
-              <div class="controls">
-                <div class="ctrl">
-                  <label for="dynamicTaskSelect">Learning task</label>
-                  <select id="dynamicTaskSelect">
-                    <option value="sine">Predict the next wave value</option>
-                    <option value="counting">Predict a repeating pattern</option>
-                    <option value="addition">Remember a running total</option>
-                  </select>
-                </div>
-                <div class="ctrl">
-                  <label for="dynamicSteps">Sequence length</label>
-                  <input id="dynamicSteps" type="range" min="2" max="8" step="1" value="4" />
-                  <output id="dynamicStepsOut">4</output>
-                </div>
-                <div class="ctrl">
-                  <label for="dynamicHidden">Memory size</label>
-                  <input id="dynamicHidden" type="range" min="2" max="5" step="1" value="3" />
-                  <output id="dynamicHiddenOut">3</output>
-                </div>
-                <div class="ctrl">
-                  <label for="dynamicLR">Learning rate</label>
-                  <input id="dynamicLR" type="range" min="0.001" max="0.5" step="0.01" value="0.1" />
-                  <output id="dynamicLROut">0.1</output>
-                </div>
-              </div>
-            </details>
-          </div>
-
-          <aside class="coach-card">
-            <p class="section-kicker">What is happening?</p>
-            <h3 id="dynamicCoachTitle">Ready to predict a sequence</h3>
-            <p id="dynamicCoach">Each purple memory circle receives the current input and a message from the previous timestep.</p>
-            <div class="sequence-story">
-              <div><span>Input</span><b>What the network sees now</b></div>
-              <div><span>Memory</span><b>What it carries from before</b></div>
-              <div><span>Prediction</span><b>Its guess for this timestep</b></div>
-            </div>
-            <div class="mini-metrics">
-              <div><span>Sequence mistake</span><strong id="dynamicLossValue">—</strong></div>
-              <div><span>Gradient strength</span><strong id="dynamicGradNorm">—</strong></div>
-              <div><span>Learning steps</span><strong id="dynamicStepCount">0</strong></div>
-            </div>
-            <div id="dynamicBPTTDetail" class="coach-detail"></div>
-          </aside>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <p class="section-kicker">Backpropagation through time</p>
-          <h2>Later mistakes can teach earlier memories</h2>
-          <p>The red arrows move backward through the unfolded sequence. This lets an earlier memory learn from mistakes that happened later.</p>
-        </div>
-        <div class="explain-grid">
-          <div class="plain-steps">
-            <article><span>1</span><div><h3>Add up the sequence mistakes</h3><p>The network measures how wrong it was at every timestep.</p></div></article>
-            <article><span>2</span><div><h3>Send responsibility backward in time</h3><p>Each memory receives feedback from its own prediction and from later memories.</p></div></article>
-            <article><span>3</span><div><h3>Update shared connections</h3><p>The same connections are reused at every timestep, so all feedback contributes to one update.</p></div></article>
-          </div>
-          <div class="stage stage-labelled gradient-stage">
-            <div class="stage-caption"><span class="dot red"></span> Red arrows carry responsibility into the past</div>
-            <svg id="dynamicGradNet" viewBox="0 0 500 350" preserveAspectRatio="xMidYMid meet" aria-label="Gradients flowing backward through time"></svg>
-          </div>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <p class="section-kicker">Watch improvement over time</p>
-          <h2>The total sequence mistake should fall</h2>
-        </div>
-        <div class="training-graph">
-          <canvas id="dynamicLossChart"></canvas>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <p class="section-kicker">Why long memories are difficult</p>
-          <h2>Feedback can fade before it reaches the past</h2>
-          <p>Move the slider. When feedback fades quickly, early timesteps receive almost no useful learning signal. This is the <b>vanishing gradient problem</b>.</p>
-        </div>
-        <div class="gradient-viz">
-          <canvas id="gradientFlow"></canvas>
-          <div class="gradient-info">
-            <p><b>Red line:</b> how much learning signal reaches each timestep. The left side is farther in the past.</p>
-            <div class="ctrl">
-              <label for="timeConstant">How slowly feedback fades</label>
-              <input id="timeConstant" type="range" min="0.1" max="3" step="0.1" value="1" />
-              <output id="timeConstantOut">1.0</output>
-            </div>
-            <button id="visualizeGradient" class="btn btn-ghost">Redraw</button>
-          </div>
-        </div>
-      </section>
-
-      <details class="panel math-details">
-        <summary>Show the math behind sequence learning</summary>
-        <div class="math-grid">
-          <div><h3>Update memory</h3><div class="formula">$$ h_t = \tanh(W_{hh}h_{t-1} + W_{xh}x_t + b_h) $$</div></div>
-          <div><h3>Make a prediction</h3><div class="formula">$$ \hat{y}_t = \operatorname{sigmoid}(W_{hy}h_t + b_y) $$</div></div>
-          <div><h3>Add sequence losses</h3><div class="formula">$$ L = \sum_{t=1}^{T} L_t(y_t, \hat{y}_t) $$</div></div>
-        </div>
-      </details>
-    </div>
-
-    <section class="panel takeaway-panel">
-      <p class="section-kicker">The one idea to remember</p>
-      <h2>Backpropagation assigns responsibility for a mistake.</h2>
-      <p>A forward pass creates a prediction. Backpropagation works backward to estimate which adjustable connections caused the mistake. Training repeats this loop until predictions improve.</p>
-    </section>
-
-    <footer class="foot">
-      <a href="https://github.com/felixvk1234/visualizations">Source on GitHub</a>
+    <footer class="page-footer">
+      <p>Backpropagation as popularized by Rumelhart, Hinton &amp; Williams, 1986. Companion pages: <a href="../neural-network-backprop/index.html">Feedforward networks</a> · <a href="../transformer/index.html">The Transformer, end to end</a>.</p>
     </footer>
   </main>
 
