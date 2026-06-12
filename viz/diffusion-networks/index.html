@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Diffusion Networks — Interactive Explainer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script>
+    window.MathJax = { tex: { inlineMath: [['\\(', '\\)']], displayMath: [['$$', '$$']] }, svg: { fontCache: 'global' } };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <a class="back" href="../../index.html">← All visualizations</a>
+
+  <main>
+    <header class="hero">
+      <span class="eyebrow">Generative models · Diffusion</span>
+      <h1>Diffusion Networks</h1>
+      <p class="hero-sub">The models behind Stable Diffusion, DALL·E and Midjourney are built on a strange idea: to learn how to <b>create</b> images, first learn how to <b>destroy</b> them. A diffusion network watches photos dissolve into pure noise, then trains a neural network to run that film backwards — one small denoising step at a time. Follow one photo of a ginger cat through the whole story. Every noisy image on this page is computed live from the photo's real pixels.</p>
+    </header>
+
+    <!-- ===================== FULL PIPELINE OVERVIEW ===================== -->
+    <section class="panel" id="overview">
+      <p class="section-kicker">The full picture</p>
+      <h2>Destroy with noise, learn to rebuild</h2>
+      <p class="lead">Two processes, mirror images of each other. The <b>forward process</b> is fixed and brainless: it just sprinkles Gaussian noise on the image, over and over, until nothing is left. The <b>reverse process</b> is where all the intelligence lives: a neural network learns to undo one noising step at a time. Each stage below is explained in detail further down the page.</p>
+
+      <div class="pipeline">
+        <div class="pipe-stage">
+          <div class="pipe-visual"><canvas class="pipe-canvas" data-t="0" width="96" height="96"></canvas></div>
+          <b>1 · Clean image \(x_0\)</b>
+          <small>A photo from the training set</small>
+        </div>
+        <div class="pipe-arrow fwd" aria-hidden="true">→</div>
+        <div class="pipe-stage">
+          <div class="pipe-visual"><canvas class="pipe-canvas" data-t="350" width="96" height="96"></canvas></div>
+          <b>2 · Add noise</b>
+          <small>Hundreds of tiny Gaussian steps</small>
+        </div>
+        <div class="pipe-arrow fwd" aria-hidden="true">→</div>
+        <div class="pipe-stage">
+          <div class="pipe-visual"><canvas class="pipe-canvas" data-t="1000" width="96" height="96"></canvas></div>
+          <b>3 · Pure noise \(x_T\)</b>
+          <small>All structure destroyed — \(\mathcal{N}(0, I)\)</small>
+        </div>
+        <div class="pipe-arrow rev" aria-hidden="true">→</div>
+        <div class="pipe-stage">
+          <div class="pipe-visual">
+            <div class="unet-stack">
+              <div class="unet-card ghost g2"></div>
+              <div class="unet-card ghost g1"></div>
+              <div class="unet-card">
+                <span>predict ε</span>
+                <span>subtract it</span>
+              </div>
+              <span class="stack-count">× T steps</span>
+            </div>
+          </div>
+          <b>4 · Denoise step by step</b>
+          <small>A neural network \(\epsilon_\theta\) reverses each step</small>
+        </div>
+        <div class="pipe-arrow rev" aria-hidden="true">→</div>
+        <div class="pipe-stage">
+          <div class="pipe-visual"><canvas class="pipe-canvas" data-t="0" width="96" height="96"></canvas></div>
+          <b>5 · New image</b>
+          <small>Sampled from noise — never seen before</small>
+        </div>
+      </div>
+      <p class="caption">Steps 1–3 (orange arrows) happen only during <b>training</b>. Steps 4–5 (green arrows) are how a trained model <b>generates</b>: it starts at stage 3 — pure random noise — and walks left through the learned reverse process.</p>
+    </section>
+
+    <!-- ===================== STEP 1: FORWARD PROCESS ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Step 1 — The forward process</p>
+      <h2>Drowning a cat in Gaussian noise</h2>
+      <p class="lead">The forward process blends the image with random noise, a little more at every timestep \(t\). Conveniently, you never have to apply the steps one by one — there is a closed form that jumps straight to any timestep. The number \(\bar\alpha_t\) (between 1 and 0) sets the mix: how much original image survives versus how much noise has taken over. <b>Drag the slider</b> to move through time yourself.</p>
+
+      <div class="formula">
+        $$x_t \;=\; \underbrace{\sqrt{\bar\alpha_t}\, x_0}_{\text{what's left of the cat}} \;+\; \underbrace{\sqrt{1-\bar\alpha_t}\;\epsilon}_{\text{noise}}, \qquad \epsilon \sim \mathcal{N}(0, I)$$
+      </div>
+
+      <div class="noise-lab">
+        <div class="noise-stage-wrap">
+          <canvas id="noiseCanvas" width="256" height="256"></canvas>
+        </div>
+        <div class="noise-controls">
+          <label class="control-label" for="tSlider">Timestep: <b id="tLabel">t = 0</b></label>
+          <input type="range" id="tSlider" min="0" max="1000" step="5" value="0" />
+          <div class="mix-meter">
+            <div class="mix-track"><i id="mixSignal"></i></div>
+            <div class="mix-legend">
+              <span><span class="dot signal"></span>signal \(\sqrt{\bar\alpha_t}\) <b id="roSignal">100%</b></span>
+              <span><span class="dot noise"></span>noise \(\sqrt{1-\bar\alpha_t}\) <b id="roNoise">1%</b></span>
+            </div>
+          </div>
+          <div class="noise-readout">
+            <div class="readout-row"><span>\(\bar\alpha_t\)</span><b id="roAlpha">1.000</b></div>
+            <div class="readout-row"><span>Cat still visible to you?</span><b id="roVisible">Completely</b></div>
+          </div>
+          <p class="note">Notice how the cat stays recognisable surprisingly long, then collapses quickly near the end. That's the <b>cosine schedule</b> at work — the curve below was chosen so that information is destroyed at a steady, useful rate instead of all at once.</p>
+        </div>
+      </div>
+
+      <div class="schedule-chart">
+        <canvas id="scheduleCanvas" width="900" height="220"></canvas>
+        <p class="caption">The noise schedule \(\bar\alpha_t\) over all 1000 timesteps (cosine schedule, used on this whole page). The moving dot tracks the slider above.</p>
+      </div>
+    </section>
+
+    <!-- ===================== STEP 2: TRAINING ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Step 2 — Training</p>
+      <h2>The network's only job: spot the noise</h2>
+      <p class="lead">Here is the trick that makes diffusion work. Generating an image from scratch is hopelessly hard — but <b>guessing which pixels are noise</b> in a corrupted image is a concrete, learnable task. Training is just this, millions of times: take a photo, noise it to a random timestep, show the network \(x_t\) and \(t\), and grade its guess \(\epsilon_\theta(x_t, t)\) against the true noise \(\epsilon\):</p>
+
+      <div class="formula">
+        $$\mathcal{L} \;=\; \big\lVert\, \epsilon - \epsilon_\theta(x_t,\, t) \,\big\rVert^2$$
+      </div>
+
+      <p class="lead">If the network can name the noise, it implicitly knows what the clean image was — solve the forward equation for \(x_0\) and you can <i>look through the noise</i>. <b>Drag the training slider</b> to see how the network's view of the cat sharpens as its noise predictions improve.</p>
+
+      <div class="train-lab">
+        <div class="train-cards">
+          <div class="train-card">
+            <canvas id="trainInput" width="192" height="192"></canvas>
+            <b>Input \(x_t\)</b>
+            <small>noisy image at <span id="trainTLabel">t = 600</span></small>
+          </div>
+          <div class="train-op" aria-hidden="true">
+            <span class="op-net">\(\epsilon_\theta\)</span>
+            <span class="op-arrow">→</span>
+          </div>
+          <div class="train-card">
+            <canvas id="trainPred" width="192" height="192"></canvas>
+            <b>Predicted noise \(\hat\epsilon\)</b>
+            <small>the network's guess</small>
+          </div>
+          <div class="train-op" aria-hidden="true">
+            <span class="op-net subtract">−</span>
+            <span class="op-arrow">→</span>
+          </div>
+          <div class="train-card">
+            <canvas id="trainRecon" width="192" height="192"></canvas>
+            <b>Implied clean image \(\hat{x}_0\)</b>
+            <small>what the network “sees”</small>
+          </div>
+        </div>
+        <div class="train-controls">
+          <label class="control-label" for="trainSlider">Training progress: <b id="trainLabel">0%</b></label>
+          <input type="range" id="trainSlider" min="0" max="100" step="1" value="0" />
+          <div class="loss-readout"><span>Noise-prediction loss</span><b id="lossLabel">high</b><div class="loss-track"><i id="lossBar"></i></div></div>
+        </div>
+      </div>
+      <p class="caption">An untrained network guesses random noise, so subtracting its guess reveals garbage. As training improves the prediction \(\hat\epsilon\) (simulated here by blending toward the true \(\epsilon\)), the implied clean image converges to the cat — even though the network never outputs an image directly.</p>
+    </section>
+
+    <!-- ===================== STEP 3: SAMPLING ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Step 3 — Sampling</p>
+      <h2>Generation is denoising in a loop</h2>
+      <p class="lead">To create an image, the trained model starts from <b>pure random noise</b> — no photo anywhere — and applies its denoising step over and over: predict the noise, remove a sliver of it, repeat. Structure emerges gradually: first vague colour fields, then shapes, then fur and whiskers. <b>Press generate</b> and watch all \(T\) steps run.</p>
+
+      <div class="formula">
+        $$x_{t-1} \;=\; \frac{1}{\sqrt{\alpha_t}}\left(x_t - \frac{1-\alpha_t}{\sqrt{1-\bar\alpha_t}}\;\epsilon_\theta(x_t, t)\right) + \sigma_t z$$
+      </div>
+
+      <div class="sample-lab">
+        <div class="sample-stage-wrap">
+          <canvas id="sampleCanvas" width="256" height="256"></canvas>
+          <div class="sample-progress"><i id="sampleBar"></i></div>
+        </div>
+        <div class="sample-side">
+          <button class="btn primary" id="sampleBtn">▶ Generate from noise</button>
+          <div class="noise-readout">
+            <div class="readout-row"><span>Current step</span><b id="sampleStep">t = 1000</b></div>
+            <div class="readout-row"><span>Denoising steps done</span><b id="sampleDone">0 / 1000</b></div>
+          </div>
+          <p class="note">On this page the “network” is an oracle that knows the answer, so the sample converges to our cat — a real model would dream up a <b>new</b> cat each run, because each starting noise leads somewhere different. That randomness is the whole point: one trained network, infinite images.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== TAKEAWAYS ===================== -->
+    <section class="panel takeaways">
+      <p class="section-kicker">Why it matters</p>
+      <h2>Three things to remember</h2>
+      <div class="takeaway-grid">
+        <div class="takeaway">
+          <b>Hard problem, easy pieces</b>
+          <p>“Paint a cat from nothing” is intractable; “remove a little noise” is almost trivial. Diffusion splits one impossible leap into a thousand easy steps — and a network that masters the easy step inherits the impossible one.</p>
+        </div>
+        <div class="takeaway">
+          <b>Noise is the canvas</b>
+          <p>Every generated image is born as pure Gaussian noise. The starting noise acts like a random seed: different draws of \(x_T\) flow back to different images, so one model yields endless variety.</p>
+        </div>
+        <div class="takeaway">
+          <b>Add text, get DALL·E</b>
+          <p>Condition the noise predictor on a caption embedding — \(\epsilon_\theta(x_t, t, \text{“a ginger cat”})\) — and the denoising walk is steered toward images matching the text. That single change turns this page into a text-to-image system.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="page-footer">
+      <p>Based on <i>“Denoising Diffusion Probabilistic Models”</i> — Ho, Jain &amp; Abbeel, 2020 (NeurIPS) — with the cosine schedule from Nichol &amp; Dhariwal, 2021. Cat photo by Kabo on Unsplash.</p>
+    </footer>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
