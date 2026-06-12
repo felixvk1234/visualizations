@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vision Transformer (ViT) — Interactive Explainer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script>
+    window.MathJax = { tex: { inlineMath: [['\\(', '\\)']], displayMath: [['$$', '$$']] }, svg: { fontCache: 'global' } };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <a class="back" href="../../index.html">← All visualizations</a>
+
+  <main>
+    <header class="hero">
+      <span class="eyebrow">Computer vision · Transformers</span>
+      <h1>The Vision Transformer</h1>
+      <p class="hero-sub">A transformer doesn't know what an image is — it only understands <b>sequences of tokens</b>, like words in a sentence. The Vision Transformer (ViT) makes images speak that language: it cuts a photo into patches, treats each patch as a word, and lets self-attention figure out how the pieces relate. Follow one photo of a Labrador puppy through the entire pipeline.</p>
+    </header>
+
+    <!-- ===================== FULL PIPELINE OVERVIEW ===================== -->
+    <section class="panel" id="overview">
+      <p class="section-kicker">The full picture</p>
+      <h2>From pixels to a prediction, in one diagram</h2>
+      <p class="lead">Every Vision Transformer follows the same five stages. Each stage below is explained in detail further down the page.</p>
+
+      <div class="pipeline">
+        <div class="pipe-stage">
+          <div class="pipe-visual"><img class="pipe-img" src="dog.jpg" alt="Input photo of a Labrador puppy" /></div>
+          <b>1 · Input image</b>
+          <small>A photo, e.g. 224 × 224 pixels</small>
+        </div>
+        <div class="pipe-arrow" aria-hidden="true">→</div>
+        <div class="pipe-stage">
+          <div class="pipe-visual"><div class="mini-grid" id="pipeGrid"></div></div>
+          <b>2 · Split into patches</b>
+          <small>16 × 16-pixel tiles → 196 patches</small>
+        </div>
+        <div class="pipe-arrow" aria-hidden="true">→</div>
+        <div class="pipe-stage">
+          <div class="pipe-visual"><div class="token-row" id="pipeTokens"></div></div>
+          <b>3 · Embed as tokens</b>
+          <small>Linear projection + position + <span class="cls-chip">CLS</span></small>
+        </div>
+        <div class="pipe-arrow" aria-hidden="true">→</div>
+        <div class="pipe-stage">
+          <div class="pipe-visual">
+            <div class="encoder-stack">
+              <div class="encoder-card ghost g2"></div>
+              <div class="encoder-card ghost g1"></div>
+              <div class="encoder-card">
+                <span>Self-Attention</span>
+                <span>MLP</span>
+              </div>
+              <span class="stack-count">× 12</span>
+            </div>
+          </div>
+          <b>4 · Transformer encoder</b>
+          <small>Every patch attends to every other</small>
+        </div>
+        <div class="pipe-arrow" aria-hidden="true">→</div>
+        <div class="pipe-stage">
+          <div class="pipe-visual">
+            <div class="mini-bars">
+              <div class="mini-bar"><i style="--w:91%"></i><span>Labrador 91%</span></div>
+              <div class="mini-bar"><i style="--w:6%"></i><span>Golden 6%</span></div>
+              <div class="mini-bar"><i style="--w:3%"></i><span>Other 3%</span></div>
+            </div>
+          </div>
+          <b>5 · Classify</b>
+          <small>MLP head reads the <span class="cls-chip">CLS</span> token</small>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== STEP 1: PATCHIFY ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Step 1 — Patchify</p>
+      <h2>An image becomes a sequence of “visual words”</h2>
+      <p class="lead">Transformers were built for text, where the input is naturally a sequence. An image is just a grid of pixels — so ViT imposes a sequence on it by slicing the image into fixed-size square patches, read left-to-right, top-to-bottom, like words on a page. <b>Drag the slider</b> to change the patch size, and toggle <b>Explode</b> to see the patches as separate tokens.</p>
+
+      <div class="patch-lab">
+        <div class="patch-stage-wrap">
+          <div class="patch-stage" id="patchStage"></div>
+        </div>
+        <div class="patch-controls">
+          <label class="control-label" for="gridSlider">Grid size: <b id="gridLabel">4 × 4</b></label>
+          <input type="range" id="gridSlider" min="2" max="14" step="1" value="4" />
+          <button class="btn" id="explodeBtn">Explode patches</button>
+          <div class="patch-readout">
+            <div class="readout-row"><span>Patches per side</span><b id="roSide">4</b></div>
+            <div class="readout-row"><span>Sequence length</span><b id="roCount">16 tokens</b></div>
+            <div class="readout-row"><span>Pixels per patch</span><b id="roPixels">56 × 56</b></div>
+          </div>
+          <p class="note">The original ViT uses <b>16 × 16-pixel</b> patches on a 224 × 224 image — a 14 × 14 grid, i.e. <b>196 tokens</b>. That's where the paper's title comes from: <i>“An Image is Worth 16×16 Words.”</i></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== STEP 2: EMBEDDING ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Step 2 — Embedding</p>
+      <h2>Each patch is flattened into a vector</h2>
+      <p class="lead">A transformer can't eat image tiles directly — every token must be a vector of numbers. Each patch (16 × 16 pixels × 3 colour channels = 768 raw values) is flattened and multiplied by a learned matrix \(\mathbf{E}\), projecting it to the model dimension \(D\). Two extras are then added:</p>
+
+      <ul class="feature-list">
+        <li><b><span class="cls-chip">CLS</span> token</b> — a learned vector prepended to the sequence. It carries no image content itself; its job is to <i>collect</i> a summary of the whole image as it passes through the encoder.</li>
+        <li><b>Position embeddings</b> — patches alone don't say <i>where</i> they came from. A learned position vector is added to each token so the model knows patch #1 is the top-left corner and patch #196 is the bottom-right.</li>
+      </ul>
+
+      <div class="formula">
+        $$\mathbf{z}_0 = \big[\,\mathbf{x}_{\text{cls}};\; \mathbf{x}^1_p\mathbf{E};\; \mathbf{x}^2_p\mathbf{E};\; \cdots;\; \mathbf{x}^N_p\mathbf{E}\,\big] + \mathbf{E}_{pos}$$
+      </div>
+
+      <div class="embed-strip" id="embedStrip"></div>
+      <p class="caption">The input sequence for our puppy photo (4 × 4 grid for readability). Each card is one token: the patch it came from, its position index, and its embedding vector — drawn here as a colour-coded bar strip computed from the real pixel values of each patch.</p>
+    </section>
+
+    <!-- ===================== STEP 3: SELF-ATTENTION ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Step 3 — Self-attention</p>
+      <h2>Every patch looks at every other patch</h2>
+      <p class="lead">This is the heart of the transformer. For each token, attention computes a <b>query</b>, compares it against the <b>keys</b> of all other tokens, and turns the match scores into weights with a softmax:</p>
+
+      <div class="formula">
+        $$\text{Attention}(Q, K, V) = \text{softmax}\!\left(\frac{QK^{\top}}{\sqrt{d_k}}\right)V$$
+      </div>
+
+      <p class="lead">High weight = “this patch is relevant to me.” A patch on the puppy's ear can directly consult a patch on its paw in a single step — no matter how far apart they are in the image. A convolutional network would need many stacked layers to connect pixels that distant; attention does it immediately. <b>Click or hover any patch</b> below to see where one (simulated) attention head looks from that patch.</p>
+
+      <div class="attn-lab">
+        <div class="attn-grid-wrap">
+          <div class="attn-grid" id="attnGrid"></div>
+        </div>
+        <div class="attn-side">
+          <p class="control-label">Reading the heatmap</p>
+          <div class="legend">
+            <span class="legend-swatch query"></span><span>Selected patch (the query)</span>
+            <span class="legend-swatch hot"></span><span>High attention weight</span>
+            <span class="legend-swatch cold"></span><span>Low attention weight</span>
+          </div>
+          <div class="attn-readout" id="attnReadout">
+            <p class="placeholder">Select a patch to inspect its attention pattern.</p>
+          </div>
+          <p class="note">For illustration, this head's weights are computed live from the photo: patches with similar colour and texture statistics attend to each other more, with a mild distance penalty — a pattern real ViT heads often learn. A trained model has 12 heads per layer, each learning its own pattern.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== STEP 4: ENCODER ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Step 4 — The encoder block</p>
+      <h2>Attention + MLP, repeated 12 times</h2>
+      <p class="lead">One encoder block does two things: self-attention lets tokens <b>exchange information</b>, then a small MLP lets each token <b>process</b> what it just gathered. Both are wrapped with LayerNorm and a residual (skip) connection, which keep training stable in deep stacks. ViT-Base repeats this block 12 times — by the final layer, every token has mixed information from the entire image many times over.</p>
+
+      <div class="block-diagram">
+        <svg viewBox="0 0 960 240" role="img" aria-label="Diagram of one transformer encoder block">
+          <defs>
+            <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#9aa4b8"/>
+            </marker>
+            <marker id="arrG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#55d68b"/>
+            </marker>
+          </defs>
+          <!-- main flow arrows -->
+          <line x1="30"  y1="120" x2="98"  y2="120" stroke="#9aa4b8" stroke-width="1.6" marker-end="url(#arr)"/>
+          <line x1="215" y1="120" x2="266" y2="120" stroke="#9aa4b8" stroke-width="1.6" marker-end="url(#arr)"/>
+          <line x1="398" y1="120" x2="430" y2="120" stroke="#9aa4b8" stroke-width="1.6" marker-end="url(#arr)"/>
+          <line x1="472" y1="120" x2="513" y2="120" stroke="#9aa4b8" stroke-width="1.6" marker-end="url(#arr)"/>
+          <line x1="630" y1="120" x2="670" y2="120" stroke="#9aa4b8" stroke-width="1.6" marker-end="url(#arr)"/>
+          <line x1="772" y1="120" x2="804" y2="120" stroke="#9aa4b8" stroke-width="1.6" marker-end="url(#arr)"/>
+          <line x1="846" y1="120" x2="930" y2="120" stroke="#9aa4b8" stroke-width="1.6" marker-end="url(#arr)"/>
+
+          <!-- residual skips -->
+          <path d="M 64 120 C 64 38, 452 38, 452 98" fill="none" stroke="#55d68b" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrG)"/>
+          <path d="M 492 120 C 492 206, 826 206, 826 142" fill="none" stroke="#55d68b" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrG)"/>
+          <text x="255" y="32" fill="#55d68b" font-size="12.5" font-weight="600" text-anchor="middle">residual connection</text>
+          <text x="660" y="220" fill="#55d68b" font-size="12.5" font-weight="600" text-anchor="middle">residual connection</text>
+
+          <!-- boxes -->
+          <g font-family="Inter, sans-serif" text-anchor="middle">
+            <rect x="100" y="92" width="115" height="56" rx="11" fill="#1b2438" stroke="#3a4666"/>
+            <text x="157" y="116" fill="#eef1f7" font-size="13.5" font-weight="700">LayerNorm</text>
+            <text x="157" y="134" fill="#9aa4b8" font-size="11">normalize tokens</text>
+
+            <rect x="268" y="84" width="130" height="72" rx="11" fill="#22305d" stroke="#6090ff"/>
+            <text x="333" y="110" fill="#eef1f7" font-size="13.5" font-weight="700">Multi-Head</text>
+            <text x="333" y="126" fill="#eef1f7" font-size="13.5" font-weight="700">Self-Attention</text>
+            <text x="333" y="144" fill="#9fb6ff" font-size="11">tokens exchange info</text>
+
+            <circle cx="452" cy="120" r="20" fill="#152033" stroke="#55d68b"/>
+            <text x="452" y="126" fill="#55d68b" font-size="17" font-weight="700">+</text>
+
+            <rect x="515" y="92" width="115" height="56" rx="11" fill="#1b2438" stroke="#3a4666"/>
+            <text x="572" y="116" fill="#eef1f7" font-size="13.5" font-weight="700">LayerNorm</text>
+            <text x="572" y="134" fill="#9aa4b8" font-size="11">normalize tokens</text>
+
+            <rect x="672" y="84" width="100" height="72" rx="11" fill="#2c2554" stroke="#8a70ff"/>
+            <text x="722" y="110" fill="#eef1f7" font-size="13.5" font-weight="700">MLP</text>
+            <text x="722" y="128" fill="#bcaaff" font-size="11">each token</text>
+            <text x="722" y="142" fill="#bcaaff" font-size="11">thinks alone</text>
+
+            <circle cx="826" cy="120" r="20" fill="#152033" stroke="#55d68b"/>
+            <text x="826" y="126" fill="#55d68b" font-size="17" font-weight="700">+</text>
+          </g>
+          <text x="2" y="108" fill="#9aa4b8" font-size="12" font-weight="600">tokens in</text>
+          <text x="880" y="108" fill="#9aa4b8" font-size="12" font-weight="600">tokens out</text>
+        </svg>
+        <div class="stack-note">⟲ &nbsp;Repeat this whole block <b>L = 12</b> times (ViT-Base)</div>
+      </div>
+    </section>
+
+    <!-- ===================== STEP 5: CLASSIFICATION ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Step 5 — Classification</p>
+      <h2>The <span class="cls-chip big">CLS</span> token delivers the verdict</h2>
+      <p class="lead">After 12 rounds of attention, the <span class="cls-chip">CLS</span> token — which started as a blank, learned vector — has absorbed a summary of the entire image. A single small MLP head maps it to one score per class, and a softmax turns the scores into probabilities. Everything before this point never saw a class label directly; the head is the only part that speaks “dog.”</p>
+
+      <div class="classify-row">
+        <div class="classify-input">
+          <img src="dog.jpg" alt="Labrador puppy input" />
+          <span class="arrow-down">CLS token after layer 12 →</span>
+        </div>
+        <div class="prob-bars" id="probBars">
+          <div class="prob-bar" data-p="91.4"><span class="prob-label">Labrador retriever</span><div class="prob-track"><i></i></div><span class="prob-val">91.4%</span></div>
+          <div class="prob-bar" data-p="5.8"><span class="prob-label">Golden retriever</span><div class="prob-track"><i></i></div><span class="prob-val">5.8%</span></div>
+          <div class="prob-bar" data-p="1.6"><span class="prob-label">Great Pyrenees</span><div class="prob-track"><i></i></div><span class="prob-val">1.6%</span></div>
+          <div class="prob-bar" data-p="0.7"><span class="prob-label">Kuvasz</span><div class="prob-track"><i></i></div><span class="prob-val">0.7%</span></div>
+          <div class="prob-bar" data-p="0.5"><span class="prob-label">Other classes</span><div class="prob-track"><i></i></div><span class="prob-val">0.5%</span></div>
+        </div>
+      </div>
+      <p class="caption">Illustrative output of a ViT-Base/16 fine-tuned on ImageNet-1k for this photo.</p>
+    </section>
+
+    <!-- ===================== TAKEAWAYS ===================== -->
+    <section class="panel takeaways">
+      <p class="section-kicker">Why it matters</p>
+      <h2>Three things to remember</h2>
+      <div class="takeaway-grid">
+        <div class="takeaway">
+          <b>Images as language</b>
+          <p>ViT's only image-specific step is the patchify stage. After that, it's a standard text transformer — the same architecture behind GPT and BERT — which is why advances transfer freely between vision and NLP.</p>
+        </div>
+        <div class="takeaway">
+          <b>Global from layer one</b>
+          <p>A CNN builds up its field of view slowly, layer by layer. In a ViT, the very first attention layer already connects opposite corners of the image — ear, paw, and grass can interact immediately.</p>
+        </div>
+        <div class="takeaway">
+          <b>Scale is the trade-off</b>
+          <p>ViT bakes in fewer assumptions about images than a CNN, so it needs more data to learn them — but given large-scale pre-training, it matches or beats the best CNNs, and dominates as models grow.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="page-footer">
+      <p>Based on <i>“An Image is Worth 16×16 Words: Transformers for Image Recognition at Scale”</i> — Dosovitskiy et al., 2020 (ICLR 2021). Puppy photo by Ben Owen on Unsplash.</p>
+    </footer>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
