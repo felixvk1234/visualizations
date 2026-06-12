@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Attention, Explained Slowly — Interactive Explainer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script>
+    window.MathJax = { tex: { inlineMath: [['\\(', '\\)']], displayMath: [['$$', '$$']] }, svg: { fontCache: 'global' } };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <a class="back" href="../../index.html">← All visualizations</a>
+
+  <main>
+    <header class="hero">
+      <span class="eyebrow">Transformers · The core mechanism</span>
+      <h1>Attention, explained slowly</h1>
+      <p class="hero-sub">Attention has a scary reputation, but underneath it is one simple idea: <b>each word builds its meaning by taking a weighted average of the other words.</b> Everything else — queries, keys, values, softmax — is just the machinery for choosing good weights. This page walks through that machinery one small step at a time. No step requires more than multiplying and adding a few numbers.</p>
+    </header>
+
+    <!-- ===================== 0. WHY ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Before any math — the problem</p>
+      <h2>A word alone doesn't know what it means</h2>
+      <p class="lead">Read the word <b>“bank”</b> in these two sentences:</p>
+      <div class="bank-demo">
+        <div class="bank-card">
+          <p>“She sat on the <span class="hl hl-green">river</span> <span class="hl hl-focus">bank</span>.”</p>
+          <small>Here “bank” means <b>the side of a river</b> — because of “river”.</small>
+        </div>
+        <div class="bank-card">
+          <p>“She opened a <span class="hl hl-blue">savings</span> account at the <span class="hl hl-focus">bank</span>.”</p>
+          <small>Here “bank” means <b>a financial institution</b> — because of “savings account”.</small>
+        </div>
+      </div>
+      <p class="lead">The letters b-a-n-k are identical; only the <b>surrounding words</b> decide the meaning. So a good language model needs a mechanism that lets each word <b>look at the other words and pull in the relevant ones</b>. That mechanism is attention. Keep this picture in mind: <i>“bank” reaching over to “river” and borrowing some of its meaning.</i></p>
+    </section>
+
+    <!-- ===================== 1. THE CAST ===================== -->
+    <section class="panel">
+      <p class="section-kicker">The cast of characters</p>
+      <h2>Every word plays three roles at once</h2>
+      <p class="lead">To let words look things up in each other, attention gives every word three separate vectors, made by multiplying its embedding with three learned matrices. The names are abstract, but each role has a very concrete job. A library analogy:</p>
+      <div class="qkv-cards">
+        <div class="qkv-card q">
+          <span class="qkv-letter">Q</span>
+          <b>Query — “what am I looking for?”</b>
+          <p>The question a word asks about its context. The word “bank” might ask: <i>“is there a word nearby that tells me which kind of bank I am?”</i></p>
+        </div>
+        <div class="qkv-card k">
+          <span class="qkv-letter">K</span>
+          <b>Key — “what can I be found by?”</b>
+          <p>The label on the spine of the book. The word “river” advertises: <i>“I'm nature/water-related — match me if that's what you need.”</i></p>
+        </div>
+        <div class="qkv-card v">
+          <span class="qkv-letter">V</span>
+          <b>Value — “what do I hand over if chosen?”</b>
+          <p>The content inside the book. Once “river” is matched, its <b>value</b> is the actual information that flows into “bank”.</p>
+        </div>
+      </div>
+      <p class="note"><b>Why three roles, not one?</b> What a word <i>searches for</i>, what it <i>can be found by</i>, and what it <i>contributes</i> are different things. “River” is found by water-related questions (key), but what it contributes (value) is its meaning. Keeping the roles separate gives the model freedom to learn each job independently.</p>
+    </section>
+
+    <!-- ===================== 2. STEP-BY-STEP ===================== -->
+    <section class="panel">
+      <p class="section-kicker">The walkthrough — one step at a time</p>
+      <h2>Six tiny steps, one tiny sentence</h2>
+      <p class="lead">We'll run attention by hand on the sentence <b>“the fluffy cat slept”</b>, and watch the word <b class="slept-hl">“slept”</b> figure out <i>who</i> slept. To keep every number readable, our toy model uses 2-dimensional queries and keys (real models use 64+). Use the <b>Next</b> button and take your time — each step is one small idea.</p>
+
+      <div class="stepper">
+        <div class="stepper-head">
+          <button class="btn" id="prevBtn">← Back</button>
+          <div class="step-dots" id="stepDots"></div>
+          <button class="btn primary" id="nextBtn">Next →</button>
+        </div>
+
+        <div class="step-title" id="stepTitle"></div>
+
+        <div class="stage" id="stage" data-step="1">
+          <div class="stage-grid" id="stageGrid"></div>
+          <div class="stage-output s6only" id="stageOutput"></div>
+        </div>
+
+        <div class="step-explain" id="stepExplain"></div>
+      </div>
+    </section>
+
+    <!-- ===================== 3. PLAYGROUND ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Build intuition — play with it</p>
+      <h2>The dot product is a “compatibility meter”</h2>
+      <p class="lead">The score between a query and a key is their <b>dot product</b>: multiply matching coordinates and add them up. Geometrically, vectors pointing <b>the same way</b> score high, perpendicular vectors score near zero, and opposite vectors score negative. <b>Drag the yellow query arrow</b> below and watch the attention weights and the blended result react in real time.</p>
+
+      <div class="playground">
+        <div class="plane-wrap">
+          <svg id="plane" viewBox="0 0 360 360" aria-label="2D plane with key vectors and a draggable query vector"></svg>
+          <p class="caption center">The four fixed arrows are the <b>keys</b> of our sentence. Drag the yellow <b>query</b> arrow.</p>
+        </div>
+        <div class="play-side">
+          <table class="score-table" id="scoreTable">
+            <thead><tr><th>word</th><th>q · k</th><th>weight</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <div class="blend-row">
+            <span>Blended value (output):</span>
+            <span class="blend-swatch" id="blendSwatch"></span>
+          </div>
+          <label class="check-row"><input type="checkbox" id="scaleToggle" checked /> divide scores by \(\sqrt{d_k}\) before softmax</label>
+          <p class="note">Try pointing the query straight at <b>“cat”</b>, then straight away from it. Notice the weights always sum to 100% — attention never invents or loses information, it only <b>redistributes</b> where to look. Untick the √d<sub>k</sub> box to see the weights become more extreme: that's exactly the saturation problem scaling prevents.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== 4. MATRIX VIEW ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Zooming back out</p>
+      <h2>All words attend at once — that's the famous formula</h2>
+      <p class="lead">We followed one word (“slept”) for clarity, but in reality <b>every word runs the same six steps simultaneously</b>. Stack all the queries into a matrix \(Q\), the keys into \(K\), the values into \(V\), and the whole walkthrough collapses into one line:</p>
+      <div class="formula">
+        $$\text{Attention}(Q, K, V) = \underbrace{\text{softmax}\!\Big(\frac{QK^{\top}}{\sqrt{d_k}}\Big)}_{\text{the attention weights}}\,V$$
+      </div>
+      <p class="lead">The softmax term is a table of weights: <b>one row per asking word, one column per answering word</b>, each row summing to 100%. Here is that table for our toy sentence — row “slept” contains exactly the weights you saw in the walkthrough:</p>
+      <div class="heatmap-wrap">
+        <div class="heatmap" id="heatmap"></div>
+        <div class="heatmap-side">
+          <p class="control-label">How to read it</p>
+          <p class="hm-note">Pick a row, e.g. <b>slept</b>. Walk across it: “slept” gives 13% of its attention to “the”, 31% to “fluffy”, 45% to “cat”, 11% to itself. Every row is one word's complete attention budget.</p>
+          <p class="hm-note">Notice <b>fluffy</b>'s row: it attends mostly to <b>cat</b> — adjectives look at the nouns they describe. Nobody programmed that; in a trained model these patterns emerge from data.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== 5. THE "IT" DEMO ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Attention in the wild</p>
+      <h2>Watch attention resolve an ambiguous “it”</h2>
+      <p class="lead">This is the classic example from the original transformer paper. The pronoun <b>“it”</b> could mean the animal or the street — and the correct answer flips when you change the final adjective. <b>Toggle the last word</b> and watch where “it” sends its attention (weights shown are illustrative of a trained model's behaviour):</p>
+
+      <div class="it-demo">
+        <div class="it-toggle">
+          <button class="btn it-btn active" data-variant="tired">…too <b>tired</b></button>
+          <button class="btn it-btn" data-variant="wide">…too <b>wide</b></button>
+        </div>
+        <div class="it-sentence" id="itSentence"></div>
+        <p class="it-verdict" id="itVerdict"></p>
+      </div>
+      <p class="note">An animal can be tired but a street can't — so with “tired”, the query of “it” matches the key of <b>animal</b>. A street can be wide but an animal can't — so with “wide”, the same query mechanism matches <b>street</b>. One mechanism, learned from data, doing real disambiguation.</p>
+    </section>
+
+    <!-- ===================== 6. MULTI-HEAD ===================== -->
+    <section class="panel">
+      <p class="section-kicker">One last layer of the onion</p>
+      <h2>Multi-head: several attentions in parallel</h2>
+      <p class="lead">One attention pattern can only encode one kind of relationship at a time. So transformers run <b>several attention “heads” side by side</b> — each with its own \(W_Q, W_K, W_V\) matrices, each free to learn a different pattern — and concatenate the results. Three heads from the same (illustrative) layer, looking at “the cat sat on the mat”:</p>
+      <div class="heads-row" id="headsRow"></div>
+      <p class="lead">A real ViT-Base or GPT-style layer has 12 such heads, and 12+ layers of them stacked. But every single head, in every single layer, is exactly the six steps you walked through above — nothing more.</p>
+    </section>
+
+    <!-- ===================== TAKEAWAYS ===================== -->
+    <section class="panel takeaways">
+      <p class="section-kicker">If you remember three things</p>
+      <h2>The whole page in three sentences</h2>
+      <div class="takeaway-grid">
+        <div class="takeaway">
+          <b>Attention = weighted averaging</b>
+          <p>Each word's new representation is a mix of all words' values. The cleverness is entirely in choosing the mixing weights.</p>
+        </div>
+        <div class="takeaway">
+          <b>Weights come from Q·K matches</b>
+          <p>A word's query is compared to every word's key with a dot product; softmax turns the scores into percentages that sum to 100%.</p>
+        </div>
+        <div class="takeaway">
+          <b>Everything else is repetition</b>
+          <p>Multiple heads, multiple layers, images instead of words — all of it is this same six-step recipe, run many times in parallel and in sequence.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="page-footer">
+      <p>Attention mechanism from <i>“Attention Is All You Need”</i> — Vaswani et al., 2017. Companion page to the <a href="../vision-transformer/index.html">Vision Transformer explainer</a>.</p>
+    </footer>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
