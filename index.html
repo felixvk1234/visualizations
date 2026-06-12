@@ -119,6 +119,66 @@
         <p>Follow a photo of a Labrador puppy through a Vision Transformer — patchify, embed, self-attention, and classification — with live, pixel-driven interactive demos.</p>
         <div class="arrow">Explore →</div>
       </a>
+
+      <a class="card" href="viz/attention/index.html">
+        <div class="thumb">
+          <svg width="130" height="86" viewBox="0 0 130 86" fill="none">
+            <g font-family="Inter, sans-serif" font-size="9" font-weight="700">
+              <rect x="6"  y="8" width="26" height="16" rx="5" fill="#1d2740" stroke="#3a4666"/><text x="19" y="19" fill="#9aa4b8" text-anchor="middle">the</text>
+              <rect x="36" y="8" width="26" height="16" rx="5" fill="#2a1f4d" stroke="#8a70ff"/><text x="49" y="19" fill="#bcaaff" text-anchor="middle">cat</text>
+              <rect x="66" y="8" width="26" height="16" rx="5" fill="#1d2740" stroke="#3a4666"/><text x="79" y="19" fill="#9aa4b8" text-anchor="middle">sat</text>
+              <rect x="96" y="8" width="28" height="16" rx="5" fill="#3a2f14" stroke="#ffd166"/><text x="110" y="19" fill="#ffd166" text-anchor="middle">it</text>
+            </g>
+            <g stroke-linecap="round" fill="none">
+              <path d="M 108 26 C 95 52, 35 52, 22 26" stroke="#ffd166" stroke-width="1.2" opacity="0.45"/>
+              <path d="M 109 26 C 98 58, 56 58, 48 26" stroke="#ffd166" stroke-width="2.6"/>
+              <path d="M 110 26 C 104 46, 86 46, 80 26" stroke="#ffd166" stroke-width="1.2" opacity="0.45"/>
+            </g>
+            <g font-family="Inter, sans-serif" font-size="8.5" font-weight="700">
+              <text x="65" y="70" fill="#5b8cff" text-anchor="middle">softmax(QKᵀ/√dₖ)·V</text>
+            </g>
+          </svg>
+        </div>
+        <span class="tag">Transformers</span>
+        <h3>Attention, Explained Slowly</h3>
+        <p>Queries, keys, values, softmax — the core of every transformer, walked through in six tiny steps with a draggable query vector and the classic “it” disambiguation demo.</p>
+        <div class="arrow">Explore →</div>
+      </a>
+
+      <a class="card" href="viz/transformer/index.html">
+        <div class="thumb">
+          <svg width="130" height="86" viewBox="0 0 130 86" fill="none">
+            <g font-family="Inter, sans-serif" font-size="8" font-weight="700">
+              <rect x="30" y="62" width="70" height="14" rx="4" fill="#14301f" stroke="#55d68b"/><text x="65" y="72" fill="#55d68b" text-anchor="middle">embeddings</text>
+              <rect x="22" y="36" width="86" height="20" rx="6" fill="#1d2740" stroke="#3a4666" stroke-dasharray="4 3"/>
+              <rect x="30" y="44" width="32" height="9" rx="3" fill="#1d2c4d" stroke="#6090ff"/>
+              <rect x="68" y="44" width="32" height="9" rx="3" fill="#3a2f14" stroke="#ffd166"/>
+              <text x="113" y="42" fill="#ffd166" text-anchor="middle">×N</text>
+              <text x="46" y="42" fill="#9fb6ff" text-anchor="middle">attn</text>
+              <text x="84" y="42" fill="#ffd166" text-anchor="middle">ffn</text>
+              <rect x="30" y="10" width="70" height="14" rx="4" fill="#2a1f4d" stroke="#8a70ff"/><text x="65" y="20" fill="#bcaaff" text-anchor="middle">softmax → “mat”</text>
+            </g>
+            <g stroke="#9aa4b8" stroke-width="1.2" opacity="0.7">
+              <line x1="65" y1="62" x2="65" y2="57"/>
+              <line x1="65" y1="36" x2="65" y2="25"/>
+            </g>
+          </svg>
+        </div>
+        <span class="tag">Transformers</span>
+        <h3>The Transformer, End to End</h3>
+        <p>Follow a sentence through the whole pipeline — tokenize, embed, attend, transform, predict — and watch the generation loop write text one token at a time.</p>
+        <div class="arrow">Explore →</div>
+      </a>
+
+      <a class="card" href="viz/diffusion-networks/index.html">
+        <div class="thumb" style="background: url('viz/diffusion-networks/cat.jpg') center/cover; position: relative;">
+          <div style="position:absolute; inset:0; border-radius:12px; background: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E&quot;); -webkit-mask-image: linear-gradient(90deg, transparent 10%, black 90%); mask-image: linear-gradient(90deg, transparent 10%, black 90%);"></div>
+        </div>
+        <span class="tag">Generative Models</span>
+        <h3>Diffusion Networks</h3>
+        <p>How Stable Diffusion and DALL·E create images: watch a cat photo dissolve into Gaussian noise, train a network to spot the noise, then generate by denoising — all computed live from real pixels.</p>
+        <div class="arrow">Explore →</div>
+      </a>
     </div>
 
     <footer>

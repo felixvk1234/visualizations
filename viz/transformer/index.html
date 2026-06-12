@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Transformer, End to End — Interactive Explainer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script>
+    window.MathJax = { tex: { inlineMath: [['\\(', '\\)']], displayMath: [['$$', '$$']] }, svg: { fontCache: 'global' } };
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <a class="back" href="../../index.html">← All visualizations</a>
+
+  <main>
+    <header class="hero">
+      <span class="eyebrow">Transformers · The full architecture</span>
+      <h1>The transformer, end to end</h1>
+      <p class="hero-sub">GPT, Claude, BERT, ViT — under the hood they are all the same machine. A transformer does one job: <b>given some tokens, predict the next one.</b> This page follows a sentence through the entire pipeline — tokenize, embed, attend, transform, predict — and then closes the loop to show how that single step, repeated, writes whole paragraphs. For the deep dive into the attention step itself, see the companion page <a href="../attention/index.html">Attention, explained slowly</a>.</p>
+    </header>
+
+    <!-- ===================== 0. THE JOB ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Before the architecture — the job</p>
+      <h2>One task: predict the next token</h2>
+      <p class="lead">Everything a language model does — answering questions, writing code, translating — emerges from one training objective: <b>given a sequence of tokens, output a probability for every possible next token.</b> The model that assigns high probability to the tokens that actually come next, across trillions of words of text, is forced to learn grammar, facts, and reasoning along the way.</p>
+      <div class="job-demo">
+        <span class="job-prompt">“The cat sat on the</span>
+        <span class="job-blank">___”</span>
+        <span class="job-arrow">→</span>
+        <span class="job-out"><b>mat</b> 62% · floor 14% · couch 9% · …</span>
+      </div>
+      <p class="note"><b>Keep this in mind:</b> the five stages below are just the plumbing between “a piece of text goes in” and “a probability for every next token comes out”.</p>
+    </section>
+
+    <!-- ===================== 1. TOKENIZATION ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Stage 1 · Text becomes pieces</p>
+      <h2>Tokenization</h2>
+      <p class="lead">Neural networks work on numbers, not letters. So the first step splits the text into <b>tokens</b> — words or sub-word chunks from a fixed vocabulary of ~50,000–100,000 entries — and replaces each with its ID.</p>
+      <div class="viz-box">
+        <div class="tok-sentence">“The cat sat on the mat”</div>
+        <div class="flow-arrow">↓</div>
+        <div class="tok-row" id="tokWords"></div>
+        <div class="flow-arrow">↓</div>
+        <div class="tok-row" id="tokIds"></div>
+        <p class="caption center">Note that “The” and “the” map to the <b>same ID</b> — at this stage the model has no idea where in the sentence a token sits.</p>
+      </div>
+      <p class="note"><b>Why sub-words?</b> A vocabulary can't hold every word ever written. Rare words get split into pieces — “tokenization” might become <i>token</i> + <i>ization</i> — so any text can be encoded, even words the model has never seen.</p>
+    </section>
+
+    <!-- ===================== 2. EMBEDDINGS ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Stage 2 · Pieces become vectors</p>
+      <h2>Embeddings + positions</h2>
+      <p class="lead">Each token ID is looked up in a learned table and becomes a <b>vector</b> of hundreds of numbers (768 in BERT, 12,288 in GPT-3 — our toy uses 8). Words with similar meanings end up with similar vectors. But a lookup table is position-blind: both “the”s get the <b>identical</b> vector. So the model adds a <b>positional encoding</b> — a second vector that depends only on the slot the token occupies.</p>
+      <div class="viz-box">
+        <div class="embed-row" id="embedRow"></div>
+        <div class="embed-controls">
+          <button class="btn primary" id="posToggle">Add positional encoding</button>
+        </div>
+        <p class="caption center" id="embedCaption">Each column is one token's embedding. The two <b>“the”</b> columns are identical — the model can't tell them apart yet.</p>
+      </div>
+    </section>
+
+    <!-- ===================== 3. ATTENTION ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Stage 3 · Words look at each other</p>
+      <h2>Self-attention, in one picture</h2>
+      <p class="lead">This is the transformer's signature move. Each token compares its <b>query</b> against every token's <b>key</b> and takes a weighted average of their <b>values</b> — so each word rebuilds its meaning from its context. <b>Click a token in the top row</b> to see where it sends its attention:</p>
+      <div class="viz-box">
+        <svg id="attnSvg" viewBox="0 0 700 250" aria-label="Attention arcs from a selected query token to all key tokens"></svg>
+        <p class="caption center" id="attnHint"></p>
+      </div>
+      <div class="formula">
+        $$\text{Attention}(Q, K, V) = \text{softmax}\!\Big(\frac{QK^{\top}}{\sqrt{d_k}}\Big)\,V$$
+      </div>
+      <p class="note"><b>Want the step-by-step version?</b> The companion page <a href="../attention/index.html">Attention, explained slowly</a> runs this computation by hand, number by number, with a draggable query vector. Here, the takeaway is just: <b>after this stage, every token's vector contains information from the whole sentence.</b> Real models run 12+ of these in parallel (<b>multi-head attention</b>), each head free to learn a different relationship.</p>
+    </section>
+
+    <!-- ===================== 4. THE BLOCK ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Stage 4 · The repeating block</p>
+      <h2>Attention + feed-forward, stacked ×N</h2>
+      <p class="lead">Attention lets tokens <b>exchange</b> information; a small two-layer network (the <b>feed-forward network</b>) then <b>processes</b> each token on its own. Wrap both in <b>residual connections</b> (“add”) and <b>normalization</b> (“norm”) so gradients survive, and you have one transformer block. The whole model is just this block stacked — 12 times in BERT-Base, ~96 times at GPT-4 scale. <b>Press play</b> to trace the data flow:</p>
+      <div class="viz-box">
+        <div class="arch" id="arch">
+          <div class="arch-block in" data-step="0">Token embeddings + positions</div>
+          <div class="arch-arrow">↓</div>
+          <div class="repeat-wrap">
+            <span class="repeat-label">× N layers</span>
+            <div class="arch-block attn" data-step="1">Multi-head self-attention<small>tokens exchange information</small></div>
+            <div class="arch-arrow res">↓ <span class="res-note">+ residual, norm</span></div>
+            <div class="arch-block ffn" data-step="2">Feed-forward network<small>each token processed independently</small></div>
+            <div class="arch-arrow res">↓ <span class="res-note">+ residual, norm</span></div>
+          </div>
+          <div class="arch-arrow">↓</div>
+          <div class="arch-block out" data-step="3">Linear + softmax<small>a score for every token in the vocabulary</small></div>
+        </div>
+        <div class="viz-controls">
+          <button class="btn primary" id="archPlay">▶ Trace the data flow</button>
+        </div>
+      </div>
+      <p class="note"><b>Why alternate the two?</b> Attention mixes <i>across</i> tokens but is mostly linear; the feed-forward network is nonlinear but sees each token <i>alone</i>. Alternating them, layer after layer, lets the model build increasingly abstract representations — early layers handle syntax, deeper layers handle meaning and facts.</p>
+    </section>
+
+    <!-- ===================== 5. GENERATION ===================== -->
+    <section class="panel">
+      <p class="section-kicker">Stage 5 · Closing the loop</p>
+      <h2>Predict, append, repeat</h2>
+      <p class="lead">The final layer outputs a probability for <b>every token in the vocabulary</b>. To generate text, the model samples one token, appends it to the input, and runs the whole pipeline again. That's the entire secret of text generation — <b>one next-token prediction at a time.</b> Press generate and watch it happen:</p>
+      <div class="viz-box">
+        <div class="gen-sentence" id="genSentence"></div>
+        <div class="prob-rows" id="probRows"></div>
+        <div class="viz-controls">
+          <button class="btn primary" id="genBtn">▶ Generate</button>
+          <button class="btn" id="genReset">Reset</button>
+        </div>
+        <p class="caption center" id="genCaption">The model predicts a distribution, the most likely token is appended, and the loop starts over.</p>
+      </div>
+    </section>
+
+    <!-- ===================== TAKEAWAYS ===================== -->
+    <section class="panel takeaways">
+      <p class="section-kicker">If you remember three things</p>
+      <h2>The whole page in three sentences</h2>
+      <div class="takeaway-grid">
+        <div class="takeaway">
+          <b>One objective</b>
+          <p>A transformer maps a sequence of tokens to a probability distribution over the next token. Everything else is plumbing for that prediction.</p>
+        </div>
+        <div class="takeaway">
+          <b>Two alternating moves</b>
+          <p>Attention lets tokens exchange information; the feed-forward network processes each token alone. Stack the pair N times and representations grow abstract.</p>
+        </div>
+        <div class="takeaway">
+          <b>Generation is a loop</b>
+          <p>Predict the next token, append it, run again. Every paragraph a language model writes is this single step repeated.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="page-footer">
+      <p>Architecture from <i>“Attention Is All You Need”</i> — Vaswani et al., 2017. Companion pages: <a href="../attention/index.html">Attention, explained slowly</a> · <a href="../vision-transformer/index.html">The Vision Transformer</a>.</p>
+    </footer>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
