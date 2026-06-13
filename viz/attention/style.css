@@ -371,7 +371,7 @@ h2 {
 }
 @media (max-width: 780px) { .playground { grid-template-columns: 1fr; } }
 
-.plane-wrap { display: flex; flex-direction: column; }
+.plane-wrap { display: flex; flex-direction: column;}
 #plane {
   width: 100%;
   aspect-ratio: 1;
@@ -400,7 +400,8 @@ h2 {
 }
 .score-table td { padding: 9px 10px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
 .score-table td:first-child { font-weight: 700; }
-.score-table .tbar { width: 40%; }
+.score-table .tbar { width: 2%; min-width: 40px; }
+.score-table .texplicit { font-size: 12px; font-family: inherit; color: var(--muted); white-space: nowrap; }
 .tbar-track { height: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 .tbar-track i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
 

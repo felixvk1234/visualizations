@@ -243,11 +243,20 @@ const weights = softmax(scaledScores);
     marker(`mk${i}`, color);
     const [x, y] = toPx(t.k);
     el('line', { x1: C, y1: C, x2: x, y2: y, stroke: color, 'stroke-width': 2.4, 'marker-end': `url(#mk${i})` });
-    el('text', {
-      x: x + (t.k[0] >= 0 ? 8 : -8), y: y + (t.k[1] >= 0 ? -8 : 14),
+    const lx = x + (t.k[0] >= 0 ? 8 : -8);
+    const anchor = t.k[0] >= 0 ? 'start' : 'end';
+    const wordEl = el('text', {
+      x: lx, y: y + (t.k[1] >= 0 ? -16 : 12),
       fill: color, 'font-size': 13, 'font-weight': 700,
-      'text-anchor': t.k[0] >= 0 ? 'start' : 'end', 'font-family': 'Inter, sans-serif',
-    }).textContent = `k ${t.word}`;
+      'text-anchor': anchor, 'font-family': 'Inter, sans-serif',
+    });
+    wordEl.textContent = `k ${t.word}`;
+    const coordEl = el('text', {
+      x: lx, y: y + (t.k[1] >= 0 ? -3 : 25),
+      fill: color, 'font-size': 11, 'font-weight': 400, opacity: 0.8,
+      'text-anchor': anchor, 'font-family': 'Inter, sans-serif',
+    });
+    coordEl.textContent = `(${fmt(t.k[0])}, ${fmt(t.k[1])})`;
   });
 
   // query arrow (draggable)
@@ -256,15 +265,16 @@ const weights = softmax(scaledScores);
   const qHandle = el('circle', { r: 13, fill: 'rgba(255,209,102,0.15)', stroke: '#ffd166', 'stroke-width': 1.5, cursor: 'grab' });
   const qLabel = el('text', { fill: '#ffd166', 'font-size': 13.5, 'font-weight': 800, 'font-family': 'Inter, sans-serif' });
   qLabel.textContent = 'q (drag me)';
+  const qCoord = el('text', { fill: '#ffd166', 'font-size': 11, 'font-weight': 400, opacity: 0.8, 'font-family': 'Inter, sans-serif' });
 
   // score table
   const tbody = document.querySelector('#scoreTable tbody');
   const rows = TOKENS.map((t) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td style="color:${rgb(t.color)}">${t.word}</td><td class="tdot"></td>` +
+    tr.innerHTML = `<td style="color:${rgb(t.color)}">${t.word}</td><td class="texplicit"></td><td class="tdot"></td>` +
       `<td class="tbar"><div class="tbar-track"><i></i></div></td><td class="tpct"></td>`;
     tbody.appendChild(tr);
-    return { dot: tr.querySelector('.tdot'), bar: tr.querySelector('.tbar-track i'), pct: tr.querySelector('.tpct') };
+    return { explicit: tr.querySelector('.texplicit'), dot: tr.querySelector('.tdot'), bar: tr.querySelector('.tbar-track i'), pct: tr.querySelector('.tpct') };
   });
   const blendSwatch = document.getElementById('blendSwatch');
   const scaleToggle = document.getElementById('scaleToggle');
@@ -277,14 +287,24 @@ const weights = softmax(scaledScores);
     qLine.setAttribute('y2', y);
     qHandle.setAttribute('cx', x);
     qHandle.setAttribute('cy', y);
-    qLabel.setAttribute('x', x + (q[0] >= 0 ? 14 : -14));
-    qLabel.setAttribute('y', y + (q[1] >= 0 ? -12 : 20));
-    qLabel.setAttribute('text-anchor', q[0] >= 0 ? 'start' : 'end');
+    const qLx = x + (q[0] >= 0 ? 14 : -14);
+    const qAnchor = q[0] >= 0 ? 'start' : 'end';
+    qLabel.setAttribute('x', qLx);
+    qLabel.setAttribute('y', y + (q[1] >= 0 ? -16 : 14));
+    qLabel.setAttribute('text-anchor', qAnchor);
+    qCoord.setAttribute('x', qLx);
+    qCoord.setAttribute('y', y + (q[1] >= 0 ? -3 : 27));
+    qCoord.setAttribute('text-anchor', qAnchor);
+    qCoord.textContent = `(${fmt(q[0])}, ${fmt(q[1])})`;
+
 
     const scores = TOKENS.map((t) => dot(q, t.k));
-    const w = softmax(scaleToggle.checked ? scores.map((s) => s / SQRT_DK) : scores);
+    const attnScores = scaleToggle.checked ? scores.map((s) => s / SQRT_DK) : scores;
+    const w = softmax(attnScores);
     rows.forEach((r, i) => {
-      r.dot.textContent = fmt(scores[i]);
+      const k = TOKENS[i].k;
+      r.explicit.textContent = `${fmt(q[0])}×${fmt(k[0])} + ${fmt(q[1])}×${fmt(k[1])} = ${fmt(scores[i])}`;
+      r.dot.textContent = fmt(attnScores[i]);
       r.bar.style.width = `${w[i] * 100}%`;
       r.pct.textContent = `${(w[i] * 100).toFixed(0)}%`;
     });
